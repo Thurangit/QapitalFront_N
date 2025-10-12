@@ -4,6 +4,9 @@ import { StaticsImages } from '../../../modules/images';
 import ServicesProviders from '../providers';
 import { NavigationBar } from '../../../modules/Components/bottomFloatting';
 import { useNavigate } from 'react-router';
+import { Axios } from 'axios';
+import { urlApi, urlPublicAPi } from '../../../modules/urlApp';
+import AuthUser from '../../../modules/AuthUser';
 
 
 const missions = [
@@ -41,7 +44,7 @@ const TabItem = ({ icon, label, isActive, onClick }) => {
     return (
         <div className="flex flex-col items-center" onClick={onClick}>
             <button
-                className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${isActive ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
+                className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${isActive ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
                     }`}
             >
                 {icon}
@@ -262,10 +265,10 @@ export const NearbyPage = ({ users }) => {
 // Composant pour la section des commentaires du post
 const PostComments = ({ username, comment }) => {
     return (
-        <div className="flex text-gray-500 mt-2">
+        <div className="flex text-gray-500 mt-1">
             <button className="flex items-center mr-4">
-                <span className="text-sm">@{username}:</span>
-                <span className="text-sm ml-1">{comment}</span>
+                <span className="text-xs">@{username}:</span>
+                <span className="text-xs ml-1">{comment}</span>
             </button>
         </div>
     );
@@ -333,13 +336,40 @@ const ShareModal = ({ isOpen, onClose, postId }) => {
     );
 };
 
+// Fonction pour formater la date
+const formatDate = (dateString) => {
+    if (!dateString) return '';
+
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+    const diffInDays = Math.floor(diffInHours / 24);
+
+    if (diffInHours < 1) {
+        return 'À l\'instant';
+    } else if (diffInHours < 24) {
+        return `Il y a ${diffInHours}h`;
+    } else if (diffInDays === 1) {
+        return 'Hier';
+    } else if (diffInDays < 7) {
+        return `Il y a ${diffInDays} jours`;
+    } else {
+        return date.toLocaleDateString('fr-FR', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit'
+        });
+    }
+};
+
 // Composant pour un post individuel
 const Post = ({ post, saved, toggleSaved }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
+
     // Fonction pour tronquer le texte par mots et ajouter des points de suspension
-    const truncateText = (text, maxWords = 65) => {
+    const truncateText = (text, maxWords = 40) => {
         const words = text.split(' ');
         if (words.length <= maxWords) return text;
 
@@ -347,39 +377,42 @@ const Post = ({ post, saved, toggleSaved }) => {
     };
 
     // Vérifier si le texte a besoin d'être tronqué
-    const needsTruncation = post.content.split(' ').length > 65;
+    const needsTruncation = post.details.split(' ').length > 40;
 
     return (
-        <div className="bg-white border-b border-gray-200 pb-4">
+
+
+
+        <div className="bg-white border-b border-gray-200 pb-3">
             {/* Post Header */}
-            <div className="flex items-center px-4 py-3">
+            <div className="flex items-center px-3 py-2">
                 <img
                     src={post.profilePic}
                     alt={post.author}
-                    className="w-10 h-10 rounded-full mr-3 object-cover"
+                    className="w-8 h-8 rounded-full mr-2 object-cover"
                 />
                 <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{post.author}</h3>
-                    <p className="text-xs text-gray-500">{post.timeSince}</p>
+                    <h3 className="text-sm font-medium text-gray-900">{post.author}</h3>
+                    <p className="text-xs text-gray-500">{formatDate(post.created_at)}</p>
                 </div>
                 <button className="text-gray-500">
-                    <MoreHorizontal className="w-5 h-5" />
+                    <MoreHorizontal className="w-4 h-4" />
                 </button>
             </div>
 
             {/* Post Title */}
-            <div className="px-4 mb-2">
-                <h2 className="text-lg font-semibold text-gray-900">{post.title}</h2>
+            <div className="px-3 mb-2">
+                <h2 className="text-base font-semibold text-gray-900">{post.titre}</h2>
             </div>
 
             {/* Post Content */}
-            <div className="px-4 mb-3">
-                <p className="text-gray-800">
-                    {isExpanded ? post.content : truncateText(post.content)}
+            <div className="px-3 mb-2">
+                <p className="text-sm text-gray-800">
+                    {isExpanded ? post.details : truncateText(post.details)}
                     {needsTruncation && !isExpanded && (
                         <button
                             onClick={() => setIsExpanded(true)}
-                            className="ml-1 text-blue-500 font-medium"
+                            className="ml-1 text-blue-500 font-medium text-xs"
                         >
                             Voir plus
                         </button>
@@ -391,35 +424,35 @@ const Post = ({ post, saved, toggleSaved }) => {
             {post.image && (
                 <div className="relative mb-3">
                     <img
-                        src={post.image}
-                        alt="Post content"
+                        src={`${urlPublicAPi}/ImagesPostServices/${post.image}`}
+                        alt={post.titre || "Image du post"}
                         className="w-full h-auto"
                     />
 
                     {/* Floating consult button */}
                     <a
                         href={`/post/${post.id}`}
-                        className="absolute bottom-4 right-4 px-4 py-1 rounded-full flex items-center bg-blue-500 text-white bg-opacity-90 hover:bg-opacity-100 transition-all"
+                        className="absolute bottom-3 right-3 px-3 py-1 rounded-full flex items-center bg-blue-500 text-white bg-opacity-90 hover:bg-opacity-100 transition-all"
                     >
-                        <Eye className="w-4 h-4 mr-1" />
+                        <Eye className="w-3 h-3 mr-1" />
                         <span className="text-xs">Consulter</span>
-                        <span className="ml-1">&gt;</span>
+                        <span className="ml-1 text-xs">&gt;</span>
                     </a>
                 </div>
             )}
 
             {/* Post Footer */}
-            <div className="px-4 pt-3">
+            <div className="px-3 pt-2">
                 <div className="flex items-center">
-                    <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center mr-2">
+                    <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center mr-2">
                         <span className="text-red-500 text-xs">/</span>
                     </div>
-                    <span className="text-red-500 font-medium text-sm">{post.category || "/womenswears"}</span>
+                    <span className="text-red-500 font-medium text-xs">{post.category || "/womenswears"}</span>
                 </div>
 
                 <PostComments username={post.username} comment="Love this outfit." />
 
-                <div className="flex justify-between mt-3 pt-2 border-t border-gray-100">
+                <div className="flex justify-between mt-2 pt-2 border-t border-gray-100">
                     <div className="flex">
                         {/*  <button className="mr-4">
                             <MessageCircle className="w-6 h-6 text-gray-500" />
@@ -428,13 +461,13 @@ const Post = ({ post, saved, toggleSaved }) => {
                             className="mr-4"
                             onClick={() => setIsShareModalOpen(true)}
                         >
-                            <Share2 className="w-6 h-6 text-gray-500" />
+                            <Share2 className="w-5 h-5 text-gray-500" />
                         </button>
                     </div>
                     <div className="flex">
                         <button onClick={() => toggleSaved(post.id)}>
                             <BookmarkIcon
-                                className={`w-6 h-6 ${saved[post.id] ? 'text-blue-500 fill-blue-500' : 'text-gray-500'
+                                className={`w-5 h-5 ${saved[post.id] ? 'text-blue-500 fill-blue-500' : 'text-gray-500'
                                     }`}
                             />
                         </button>
@@ -521,6 +554,7 @@ const FeedPage = ({ posts, saved, toggleSaved }) => {
 
 // Page pour les demandeurs
 const RequestsPage = () => {
+
     return (
         <div className="h-full overflow-y-auto flex flex-col  p-6 text-center">
             {/* <Users className="w-16 h-16 text-blue-500 mb-4" />
@@ -724,11 +758,27 @@ export default function IndexFeed() {
 
     ];
 
+    const { http, user } = AuthUser();
+    const [services_list, setservices_list] = useState([]);
+    useEffect(() => {
+        fetchAllservices_list();
+    }, []);
+
+    const fetchAllservices_list = () => {
+
+        http.get(`${urlApi}/service/all`).then(res => {
+            setservices_list(res.data);
+        })
+    }
+    console.log("Test")
+    console.log(services_list)
+
+
     // Fonction pour afficher le contenu en fonction de l'onglet actif
     const renderContent = () => {
         switch (activeTab) {
             case 'feed':
-                return <FeedPage posts={posts} saved={saved} toggleSaved={toggleSaved} />;
+                return <FeedPage posts={services_list} saved={saved} toggleSaved={toggleSaved} />;
             case 'requests':
                 return <RequestsPage />;
             case 'talents':
@@ -743,23 +793,23 @@ export default function IndexFeed() {
             <GlobalStyle />
             {/* Header */}
             <header className="sticky top-0 z-10 bg-white border-b border-gray-200">
-                <div className="px-4 py-2 flex justify-between items-center">
-                    <h1 className="text-xl font-bold text-gray-800">PROPOSE</h1>
+                <div className="px-3 py-2 flex justify-between items-center">
+                    <h1 className="text-lg font-bold text-gray-800">PROPOSE</h1>
                     <div className="flex items-center">
-                        <div className="mr-2 text-gray-500 text-xs text-red-600">Douala</div>
-                        <MapPinIcon className="w-4 h-4 text-red-600" />
+                        <div className="mr-1 text-gray-500 text-xs text-red-600">Douala</div>
+                        <MapPinIcon className="w-3 h-3 text-red-600" />
                     </div>
                 </div>
 
                 {/* Navigation */}
-                <div className="px-4 py-2 flex items-center">
-                    <div className="flex-1 flex items-center mr-4">
+                <div className="px-3 py-2 flex items-center">
+                    <div className="flex-1 flex items-center mr-3">
                         <div className="bg-gray-100 p-2 rounded-full flex items-center w-full">
                             <Search className="w-4 h-4 text-gray-500 mr-2" />
                             <input
                                 type="text"
                                 placeholder="Rechercher"
-                                className="bg-transparent outline-none text-sm flex-1"
+                                className="bg-transparent outline-none text-xs flex-1"
                             />
                         </div>
                     </div>
@@ -767,37 +817,37 @@ export default function IndexFeed() {
 
                 {/* Categories - Centered TabBar */}
                 <div className="flex justify-center py-2">
-                    <div className="flex gap-4 overflow-x-auto no-scrollbar px-2 max-w-md mx-auto">
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar px-2 max-w-md mx-auto">
                         <div className="flex flex-col items-center" onClick={() => navigation("/New post")}>
-                            <button className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-                                <Plus className="w-6 h-6 text-white" />
+                            <button className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <Plus className="w-5 h-5 text-white" />
                             </button>
                             <span className="text-xs mt-1 whitespace-nowrap">Publier</span>
                         </div>
 
                         <TabItem
-                            icon={<Newspaper className="w-5 h-5" />}
-                            label="Offres"
+                            icon={<Newspaper className="w-4 h-4" />}
+                            label="Demandes"
                             isActive={activeTab === 'feed'}
                             onClick={() => setActiveTab('feed')}
                         />
 
                         <TabItem
-                            icon={<Contact className="w-5 h-5" />}
-                            label="Prestataires"
+                            icon={<Contact className="w-4 h-4" />}
+                            label="Experts"
                             isActive={activeTab === 'talents'}
                             onClick={() => setActiveTab('talents')}
                         />
                         <TabItem
-                            icon={<BriefcaseBusiness className="w-5 h-5" />}
-                            label="Enregistrées"
+                            icon={<BriefcaseBusiness className="w-4 h-4" />}
+                            label="Sauvegardes"
                             isActive={activeTab === 'requests'}
                             onClick={() => setActiveTab('requests')}
                         />
 
                         <div className="flex flex-col items-center" onClick={() => setMenuOpen(true)}>
-                            <button className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center border border-gray-200 flex-shrink-0">
-                                <Menu className="w-5 h-5 text-gray-600" />
+                            <button className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center border border-gray-200 flex-shrink-0">
+                                <Menu className="w-4 h-4 text-gray-600" />
                             </button>
                             <span className="text-xs mt-1 whitespace-nowrap">Menu</span>
                         </div>

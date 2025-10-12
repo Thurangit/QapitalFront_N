@@ -1,0 +1,178 @@
+/* Styles pour l'image de fond de la page d'accueil */
+
+/* Classes de base pour les styles d'overlay */
+.home-background-base {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    position: relative;
+}
+
+/* Option 1: Style simple */
+.home-background-simple {
+    /* L'image sera définie via le style inline */
+}
+
+/* Option 2: Style avec overlay sombre */
+.home-background-overlay {
+    /* L'image sera définie via le style inline */
+}
+
+.home-background-overlay::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1;
+}
+
+/* Option 3: Style avec gradient coloré */
+.home-background-gradient {
+    /* L'image sera définie via le style inline */
+}
+
+.home-background-gradient::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(147, 51, 234, 0.8));
+    z-index: 1;
+}
+
+/* Option 4: Style avec pattern */
+.home-background-pattern {
+    /* L'image sera définie via le style inline */
+}
+
+.home-background-pattern::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+        radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(147, 51, 234, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 40% 80%, rgba(236, 72, 153, 0.3) 0%, transparent 50%);
+    z-index: 1;
+}
+
+/* Option 5: Style avec animation */
+.home-background-animated {
+    /* L'image sera définie via le style inline */
+}
+
+.home-background-animated::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, 
+        rgba(59, 130, 246, 0.1) 0%, 
+        transparent 25%, 
+        rgba(147, 51, 234, 0.1) 50%, 
+        transparent 75%, 
+        rgba(236, 72, 153, 0.1) 100%);
+    animation: backgroundShift 10s ease-in-out infinite;
+    z-index: 1;
+}
+
+@keyframes backgroundShift {
+    0%, 100% {
+        transform: translateX(0) translateY(0);
+    }
+    25% {
+        transform: translateX(-10px) translateY(-5px);
+    }
+    50% {
+        transform: translateX(10px) translateY(5px);
+    }
+    75% {
+        transform: translateX(-5px) translateY(10px);
+    }
+}
+
+/* Option 6: Style avec parallaxe */
+.home-background-parallax {
+    /* L'image sera définie via le style inline */
+    transform: translateZ(0);
+    will-change: transform;
+}
+
+/* Styles pour le contenu au-dessus de l'image */
+.home-content {
+    position: relative;
+    z-index: 2;
+}
+
+/* Overlay sombre pour améliorer la lisibilité */
+.home-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 1;
+}
+
+/* Overlay coloré pour un effet moderne */
+.home-overlay-colored {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, 
+        rgba(59, 130, 246, 0.7) 0%, 
+        rgba(147, 51, 234, 0.7) 100%);
+    z-index: 1;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .home-background-simple,
+    .home-background-overlay,
+    .home-background-gradient,
+    .home-background-pattern,
+    .home-background-animated,
+    .home-background-parallax {
+        background-attachment: scroll; /* Désactiver le parallaxe sur mobile */
+    }
+}
+
+/* Fallback pour les navigateurs qui ne supportent pas certaines propriétés */
+@supports not (background-attachment: fixed) {
+    .home-background-simple,
+    .home-background-overlay,
+    .home-background-gradient,
+    .home-background-pattern,
+    .home-background-animated,
+    .home-background-parallax {
+        background-attachment: scroll;
+    }
+}
+
+/* Classes utilitaires pour les effets */
+.home-background-blur {
+    filter: blur(2px);
+    transform: scale(1.1); /* Compenser le flou */
+}
+
+.home-background-hover {
+    transition: transform 0.3s ease;
+}
+
+.home-background-hover:hover {
+    transform: scale(1.05);
+}

@@ -6,11 +6,15 @@ import IndexFeed from '../pages/ServicesApp/feed';
 import TestSocialFeed from '../pages/ServicesApp/feed/test';
 import ProfileServiceApp from '../pages/ServicesApp/profile';
 import AddPostService from '../pages/ServicesApp/feed/addPost';
+import ConnexionSimple from '../pages/Login/connexion-simple';
+import InscriptionModern from '../pages/Login/inscription-modern';
 
 export const RoutesLinks = [
 
     //  WEBSITE PART
-    { path: '/', element: <Dashboard />, name: 'WelcomePage' },
+    { path: '/', element: <ConnexionSimple />, name: 'Connexion' },
+    { path: '/Inscription', element: <InscriptionModern />, name: 'Inscription' },
+    { path: '/Account', element: <Dashboard />, name: 'WelcomePage' },
     { path: '/Menu', element: <MenuPage />, name: 'Menu' },
 
 
