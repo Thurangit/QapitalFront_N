@@ -1,6 +1,6 @@
 
 
-export const urlApp = "https://gifty-cm.vercel.app/";
+export const urlApp = "https://propoz.vercel.app/";
 export const urlPublicAPi = `http://172.23.196.237:8000`;
 //export const urlApi = `${urlPublicAPi}/api`;
 
