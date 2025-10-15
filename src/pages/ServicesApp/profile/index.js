@@ -36,7 +36,7 @@ const freelancerData = {
     stars: 4.8,
     missionsCount: 47,
     cities: ["Paris", "Lyon", "Bordeaux", "À distance"],
-    minimumPrice: "450€/jour",
+    minimumPrice: "450000 XAF",
     contacts: {
         email: "marie.dupont@example.com",
         phones: ["+33 6 12 34 56 78", "+33 6 98 76 54 32"],
@@ -318,10 +318,11 @@ export default function ProfileServiceApp() {
 
                     <div className="mt-4 flex items-center justify-between">
                         <div className="flex items-center text-green-600 font-medium">
-                            <DollarSign size={16} className="mr-1" />
-                            <span>{freelancerData.minimumPrice}</span>
+                            {/* <DollarSign size={16} className="mr-1" /> */}
+
+                            <span>  Solde : {freelancerData.minimumPrice}</span>
                             <button className="ml-2">
-                                <Edit2 size={14} className="text-gray-400" />
+
                             </button>
                         </div>
                     </div>

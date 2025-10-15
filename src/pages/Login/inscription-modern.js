@@ -177,17 +177,9 @@ const InscriptionModern = () => {
                 </div>
 
                 {/* Icônes décoratives */}
-                <div className="absolute top-10 right-10 animate-float" style={{ animationDelay: '1s' }}>
-                    <div className="w-16 h-16 decorative-icon rounded-full flex items-center justify-center">
-                        <Package className="w-8 h-8 text-white" />
-                    </div>
-                </div>
 
-                <div className="absolute bottom-10 left-10 animate-float" style={{ animationDelay: '2s' }}>
-                    <div className="w-12 h-12 decorative-icon rounded-full flex items-center justify-center">
-                        <User className="w-6 h-6 text-white" />
-                    </div>
-                </div>
+
+
             </div>
 
             {/* Section droite - Formulaire d'inscription */}
@@ -208,8 +200,8 @@ const InscriptionModern = () => {
 
                     {/* Tabs de navigation */}
                     <div className="auth-tabs flex mb-6">
-                        <Link 
-                            to="/" 
+                        <Link
+                            to="/"
                             className="auth-tab flex-1 py-2 px-3 text-xs font-medium text-center"
                         >
                             Connexion

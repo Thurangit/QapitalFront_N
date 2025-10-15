@@ -150,17 +150,8 @@ const ConnexionSimple = () => {
                 </div>
 
                 {/* Icônes décoratives */}
-                <div className="absolute top-10 right-10 animate-float" style={{ animationDelay: '1s' }}>
-                    <div className="w-16 h-16 decorative-icon rounded-full flex items-center justify-center">
-                        <Package className="w-8 h-8 text-white" />
-                    </div>
-                </div>
 
-                <div className="absolute bottom-10 left-10 animate-float" style={{ animationDelay: '2s' }}>
-                    <div className="w-12 h-12 decorative-icon rounded-full flex items-center justify-center">
-                        <User className="w-6 h-6 text-white" />
-                    </div>
-                </div>
+
             </div>
 
             {/* Section droite - Formulaire de connexion */}
@@ -172,7 +163,7 @@ const ConnexionSimple = () => {
                             <ArrowDown className="w-5 h-5 text-white" />
                         </div>
                         <h2 className="text-xl font-bold text-gray-900 mb-1">
-                            Connexion à Propoz
+                            Connexion
                         </h2>
                         <p className="text-sm text-gray-600">
                             Accédez à votre compte pour continuer
