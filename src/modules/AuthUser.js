@@ -8,24 +8,39 @@ export default function AuthUser() {
 
     const navigate = useNavigate();
 
+    const safeParse = (value) => {
+        if (!value || value === 'undefined' || value === 'null') return null;
+        try { return JSON.parse(value); } catch { return null; }
+    };
     const getToken = () => {
         const tokenString = localStorage.getItem('token');
-        const userToken = JSON.parse(tokenString);
-        return userToken;
+        return safeParse(tokenString);
     }
     const getUser = () => {
         const userString = localStorage.getItem('user');
-        const user_detail = JSON.parse(userString);
-        return user_detail;
+        return safeParse(userString);
     }
     const [token, setToken] = useState(getToken());
     const [user, setUser] = useState(getUser());
     const saveToken = (user, token) => {
-        localStorage.setItem('token', JSON.stringify(token));
-        localStorage.setItem('user', JSON.stringify(user));
-        setToken(token);
-        setUser(user);
+        if (token) localStorage.setItem('token', JSON.stringify(token));
+        if (user) localStorage.setItem('user', JSON.stringify(user));
+        setToken(token || null);
+        setUser(user || null);
+        // Fetch geolocation (public endpoint) and store for auto-fill
+        axios.get(`${urlApi}/geolocation`).then((resp) => {
+            if (resp && resp.data) {
+                localStorage.setItem('geo', JSON.stringify(resp.data));
+            }
+        }).catch(() => {
+            // ignore geolocation failures silently
+        });
         navigate('/Services Feed')
+    }
+
+    const getGeo = () => {
+        const geoString = localStorage.getItem('geo');
+        return safeParse(geoString);
     }
     const logout = () => {
         localStorage.clear();
@@ -57,6 +72,7 @@ export default function AuthUser() {
         token,
         user,
         getToken,
+        getGeo,
         http,
         logout,
     }

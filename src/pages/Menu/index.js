@@ -78,6 +78,20 @@ const recipeSlides = [
         url: "/recipes/grilled-salmon",
         image: MenuLogos.lyamo_2
     },
+    {
+        id: 6,
+        name: "Mes missions",
+        description: "Vos missions commandées et effectuées",
+        image: MenuLogos.lm2,
+        url: "/Mes missions"
+    },
+    {
+        id: 7,
+        name: "Type de profil",
+        description: "Voir et changer votre offre",
+        image: MenuLogos.lm3,
+        url: "/Type de profil"
+    },
 ];
 
 // Images possibles pour le premier élément du menu (Propose)

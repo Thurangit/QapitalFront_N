@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
     Star,
     Briefcase,
-    GraduationCap,
+
     MapPin,
     Mail,
     Phone,
@@ -10,17 +10,19 @@ import {
     Share2,
     Edit,
     X,
+    Linkedin,
+    Facebook,
+    Instagram,
+    Mail as MailIcon,
     Award,
-    Users,
-    Handshake,
-    Heart,
+
     Calendar,
     Clock,
-    ChevronRight,
+
     MessageSquare,
-    Check,
-    ChevronLeft,
-    ChevronDown
+
+
+    ExternalLink
 } from 'lucide-react';
 
 export default function TestSocialFeed() {
@@ -32,6 +34,8 @@ export default function TestSocialFeed() {
     const [modalContent, setModalContent] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingField, setEditingField] = useState(null);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const villesCameroun = ['Douala', 'Yaoundé', 'Bafoussam', 'Bamenda', 'Garoua', 'Maroua', 'Kribi', 'Limbe', 'Bertoua', 'Edea', 'Ngaoundéré', 'Kumba', 'Dschang', 'Buea', 'Foumban', 'Foumbot', 'Mbouda', 'Nkongsamba', 'Ebolowa', 'Sangmelima'];
 
     // Données de l'entreprise
     const profile = {
@@ -56,6 +60,7 @@ export default function TestSocialFeed() {
             }
         }
     };
+    const [profileForm, setProfileForm] = useState({ name: profile.name, type: profile.type, role: profile.role, description: profile.description, foundation: profile.foundation, minPrice: profile.minPrice, cities: profile.cities });
 
     // Données des prestations
     const prestations = [
@@ -280,6 +285,43 @@ export default function TestSocialFeed() {
         setShowEditModal(false);
     };
 
+    const MultiCityInput = ({ villes, initial = [], onChange }) => {
+        const [selected, setSelected] = useState(initial);
+        const [query, setQuery] = useState('');
+        const filtered = villes.filter(v => v.toLowerCase().includes(query.toLowerCase()) && !selected.includes(v));
+        const add = (city) => {
+            const next = [...selected, city];
+            setSelected(next);
+            onChange && onChange(next);
+            setQuery('');
+        };
+        const remove = (city) => {
+            const next = selected.filter(c => c !== city);
+            setSelected(next);
+            onChange && onChange(next);
+        };
+        return (
+            <div>
+                <div className="flex flex-wrap gap-2 mb-2">
+                    {selected.map(c => (
+                        <span key={c} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                            {c}
+                            <button className="text-blue-700" onClick={() => remove(c)}><X size={12} /></button>
+                        </span>
+                    ))}
+                </div>
+                <input className="w-full border rounded-lg p-2 text-sm" placeholder="Ajouter une ville..." value={query} onChange={(e) => setQuery(e.target.value)} />
+                {query && filtered.length > 0 && (
+                    <div className="mt-1 max-h-40 overflow-auto border rounded-md bg-white shadow">
+                        {filtered.map(c => (
+                            <div key={c} className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer" onClick={() => add(c)}>{c}</div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     // Affichage des étoiles
     const renderStars = (rating) => {
         return (
@@ -307,6 +349,9 @@ export default function TestSocialFeed() {
                 />
                 <button onClick={() => openEditModal('cover', 'url-image')} className="absolute top-3 right-3 bg-white p-2 rounded-full shadow">
                     <Edit size={16} className="text-gray-700" />
+                </button>
+                <button onClick={() => setShowShareModal(true)} className="absolute top-3 right-16 bg-white p-2 rounded-full shadow">
+                    <Share2 size={16} className="text-gray-700" />
                 </button>
             </div>
 
@@ -444,21 +489,13 @@ export default function TestSocialFeed() {
 
                     <div className="mt-4 flex justify-between">
                         <div className="flex space-x-3">
-                            <button className="bg-green-500 text-white p-2 rounded-full">
-                                <MessageSquare size={18} />
-                            </button>
-                            <button className="bg-blue-600 text-white p-2 rounded-full">
-                                <span className="font-bold text-sm">f</span>
-                            </button>
-                            <button className="bg-pink-600 text-white p-2 rounded-full">
-                                <span className="font-bold text-sm">in</span>
-                            </button>
-                            <button className="bg-blue-400 text-white p-2 rounded-full">
-                                <span className="font-bold text-sm">t</span>
-                            </button>
+                            <button className="bg-blue-600 text-white p-2 rounded-full" title="LinkedIn"><Linkedin size={18} /></button>
+                            <button className="bg-blue-800 text-white p-2 rounded-full" title="Facebook"><Facebook size={18} /></button>
+                            <button className="bg-pink-600 text-white p-2 rounded-full" title="Instagram"><Instagram size={18} /></button>
+                            <button className="bg-green-500 text-white p-2 rounded-full" title="WhatsApp"><MessageSquare size={18} /></button>
                         </div>
 
-                        <button className="bg-indigo-100 text-indigo-600 flex items-center px-3 py-1 rounded-lg text-sm">
+                        <button className="bg-indigo-100 text-indigo-600 flex items-center px-3 py-1 rounded-lg text-sm" onClick={() => setShowShareModal(true)}>
                             <Share2 size={16} className="mr-1" />
                             Partager
                         </button>
@@ -732,21 +769,7 @@ export default function TestSocialFeed() {
                         <div className="p-4">
                             {editingField.field === 'cities' ? (
                                 <div className="space-y-2">
-                                    {profile.cities.map((city, index) => (
-                                        <div key={index} className="flex items-center">
-                                            <input
-                                                type="text"
-                                                defaultValue={city}
-                                                className="flex-1 border rounded-lg p-2 text-sm"
-                                            />
-                                            <button className="ml-2 text-red-500 p-1">
-                                                <X size={16} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                    <button className="mt-2 text-sm text-indigo-600 flex items-center">
-                                        <span className="mr-1">+</span> Ajouter une ville
-                                    </button>
+                                    <MultiCityInput villes={villesCameroun} initial={profileForm.cities} onChange={(list) => setProfileForm({ ...profileForm, cities: list })} />
                                 </div>
                             ) : editingField.field === 'contacts' ? (
                                 <div className="space-y-3">
@@ -854,6 +877,54 @@ export default function TestSocialFeed() {
                                 <button className="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg">
                                     Enregistrer
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {showShareModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                    <div className="bg-white rounded-lg w-80 max-w-full overflow-hidden shadow-xl">
+                        <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                            <h3 className="text-lg font-medium">Partager</h3>
+                            <button onClick={() => setShowShareModal(false)} className="text-gray-400 hover:text-gray-500">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-4">
+                            <div className="grid grid-cols-3 gap-4">
+                                <button className="flex flex-col items-center justify-center">
+                                    <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center mb-2"><Linkedin className="w-5 h-5" /></div>
+                                    <span className="text-xs text-gray-600">LinkedIn</span>
+                                </button>
+                                <button className="flex flex-col items-center justify-center">
+                                    <div className="w-12 h-12 bg-green-500 text-white rounded-full flex items-center justify-center mb-2"><MessageSquare className="w-5 h-5" /></div>
+                                    <span className="text-xs text-gray-600">WhatsApp</span>
+                                </button>
+                                <button className="flex flex-col items-center justify-center">
+                                    <div className="w-12 h-12 bg-blue-800 text-white rounded-full flex items-center justify-center mb-2"><Facebook className="w-5 h-5" /></div>
+                                    <span className="text-xs text-gray-600">Facebook</span>
+                                </button>
+                                <button className="flex flex-col items-center justify-center">
+                                    <div className="w-12 h-12 bg-pink-600 text-white rounded-full flex items-center justify-center mb-2"><Instagram className="w-5 h-5" /></div>
+                                    <span className="text-xs text-gray-600">Instagram</span>
+                                </button>
+                                <button className="flex flex-col items-center justify-center">
+                                    <div className="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center mb-2"><MailIcon className="w-5 h-5" /></div>
+                                    <span className="text-xs text-gray-600">Email</span>
+                                </button>
+                                <button className="flex flex-col items-center justify-center">
+                                    <div className="w-12 h-12 bg-yellow-500 text-white rounded-full flex items-center justify-center mb-2"><MessageSquare className="w-5 h-5" /></div>
+                                    <span className="text-xs text-gray-600">SMS</span>
+                                </button>
+                            </div>
+                            <div className="mt-4 pt-3 border-t border-gray-200">
+                                <div className="flex items-center justify-between bg-gray-100 rounded-lg px-3 py-2">
+                                    <input type="text" value={`${window.location.origin}/Account`} readOnly className="bg-transparent text-sm flex-1 outline-none" />
+                                    <button className="ml-2 text-blue-500" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/Account`)}>
+                                        <ExternalLink className="w-4 h-4" />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

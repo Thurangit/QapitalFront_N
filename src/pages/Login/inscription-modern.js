@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Mail, Lock, ArrowDown, User, Truck, Package, CheckCircle, UserPlus, Phone, AtSign } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, CheckCircle, UserPlus, Phone, Briefcase, Building } from 'lucide-react';
 import AuthUser from '../../modules/AuthUser';
 import '../../style/auth-modern.css';
 // Import de l'image
 import logoPropose from '../../assets/images/login/logo_propose_1.jpeg';
 
 const InscriptionModern = () => {
-    const { http, setToken } = AuthUser();
+    const { http } = AuthUser();
     const navigate = useNavigate();
 
     // États pour le formulaire
@@ -16,6 +16,7 @@ const InscriptionModern = () => {
         prenom: '',
         email: '',
         telephone: '',
+        type: '',
         password: '',
         confirmPassword: ''
     });
@@ -61,6 +62,10 @@ const InscriptionModern = () => {
             newErrors.telephone = 'Téléphone requis';
         }
 
+        if (!formData.type) {
+            newErrors.type = 'Type de compte requis';
+        }
+
         if (!formData.password.trim()) {
             newErrors.password = 'Mot de passe requis';
         } else if (formData.password.length < 6) {
@@ -87,17 +92,17 @@ const InscriptionModern = () => {
         setErrors({});
 
         try {
-            const response = await http.post('register', {
+            await http.post('register', {
                 nom: formData.nom,
                 prenom: formData.prenom,
                 email: formData.email,
                 telephone: formData.telephone,
+                type: formData.type,
                 password: formData.password,
                 password_confirmation: formData.confirmPassword
             });
-
-            setToken(response.data.user, response.data.access_token);
-            navigate('/Account');
+            // Le backend renvoie "Succès !". On redirige vers la connexion.
+            navigate('/');
 
         } catch (error) {
             console.error('Erreur d\'inscription:', error);
@@ -306,6 +311,39 @@ const InscriptionModern = () => {
                             </div>
                             {errors.telephone && (
                                 <p className="mt-1 text-xs text-red-600">{errors.telephone}</p>
+                            )}
+                        </div>
+
+                        {/* Type de compte */}
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Type de compte *
+                            </label>
+                            <div className="relative">
+                                {/* Icône dynamique alignée comme les autres champs */}
+                                {(!formData.type || formData.type === 'particulier') && (
+                                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                )}
+                                {formData.type === 'professionnel' && (
+                                    <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                )}
+                                {formData.type === 'entreprise' && (
+                                    <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                )}
+                                <select
+                                    name="type"
+                                    value={formData.type}
+                                    onChange={handleInputChange}
+                                    className={`auth-input w-full pl-9 pr-4 py-2.5 rounded-lg text-sm ${errors.type ? 'error' : ''} ${formData.type ? 'text-gray-900' : 'text-gray-400'}`}
+                                >
+                                    <option value="" disabled>Choisir un type</option>
+                                    <option value="particulier">Particulier</option>
+                                    <option value="professionnel">Professionnel</option>
+                                    <option value="entreprise">Entreprise</option>
+                                </select>
+                            </div>
+                            {errors.type && (
+                                <p className="mt-1 text-xs text-red-600">{errors.type}</p>
                             )}
                         </div>
 

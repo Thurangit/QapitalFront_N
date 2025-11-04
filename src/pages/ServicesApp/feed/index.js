@@ -366,6 +366,7 @@ const formatDate = (dateString) => {
 const Post = ({ post, saved, toggleSaved }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const navigate = useNavigate();
 
 
     // Fonction pour tronquer le texte par mots et ajouter des points de suspension
@@ -375,6 +376,10 @@ const Post = ({ post, saved, toggleSaved }) => {
 
         return words.slice(0, maxWords).join(' ') + '...';
     };
+
+    const detailPost = (idPost) => {
+        navigate("/post/" + idPost)
+    }
 
     // Vérifier si le texte a besoin d'être tronqué
     const needsTruncation = post.details.split(' ').length > 40;
@@ -402,7 +407,7 @@ const Post = ({ post, saved, toggleSaved }) => {
 
             {/* Post Title */}
             <div className="px-3 mb-2">
-                <h2 className="text-base font-semibold text-gray-900">{post.titre}</h2>
+                <h2 className="text-base font-semibold text-gray-900" onClick={() => detailPost(post.id)}>{post.titre}</h2>
             </div>
 
             {/* Post Content */}
@@ -424,9 +429,10 @@ const Post = ({ post, saved, toggleSaved }) => {
             {post.image && (
                 <div className="relative mb-3">
                     <img
-                        src={`${urlPublicAPi}/ImagesPostServices/${post.image}`}
+                        src={`${urlPublicAPi}/${post.image}`}
                         alt={post.titre || "Image du post"}
                         className="w-full h-auto"
+                        onClick={() => detailPost(post.id)}
                     />
 
                     {/* Floating consult button */}
@@ -434,9 +440,9 @@ const Post = ({ post, saved, toggleSaved }) => {
                         href={`/post/${post.id}`}
                         className="absolute bottom-3 right-3 px-3 py-1 rounded-full flex items-center bg-blue-500 text-white bg-opacity-90 hover:bg-opacity-100 transition-all"
                     >
-                        <Eye className="w-3 h-3 mr-1" />
-                        <span className="text-xs">Consulter</span>
-                        <span className="ml-1 text-xs">&gt;</span>
+
+                        <span className="text-xs">Consulter l'offre</span>
+
                     </a>
                 </div>
             )}
@@ -633,6 +639,24 @@ const SideMenu = ({ isOpen, onClose }) => {
                             <a href="/Services profile" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
                                 <User className="w-5 h-5 mr-3 text-blue-500" />
                                 <span>Profil</span>
+                            </a>
+                        </li>
+                        <li className="mb-4">
+                            <a href="/User profile" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
+                                <User className="w-5 h-5 mr-3 text-blue-500" />
+                                <span>Profil utilisateur</span>
+                            </a>
+                        </li>
+                        <li className="mb-4">
+                            <a href="/Mes missions" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
+                                <Briefcase className="w-5 h-5 mr-3 text-blue-500" />
+                                <span>Mes missions</span>
+                            </a>
+                        </li>
+                        <li className="mb-4">
+                            <a href="/Type de profil" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
+                                <Settings className="w-5 h-5 mr-3 text-blue-500" />
+                                <span>Type de profil</span>
                             </a>
                         </li>
                         <li className="mb-4">

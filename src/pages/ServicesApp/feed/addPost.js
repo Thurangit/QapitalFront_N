@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router';
 import axios from "axios";
 import { urlApi } from "../../../modules/urlApp";
 import { toast } from "../../../modules/Components/Toast";
+import AuthUser from "../../../modules/AuthUser";
 
 // Liste des métiers disponibles (exemples)
 const metiers = [
@@ -53,6 +54,12 @@ export default function AddPostService() {
     const fileInputRef = useRef(null);
     const cameraInputRef = useRef(null);
     const navigate = useNavigate();
+    const { getGeo } = AuthUser();
+
+    const formatCoord = (value, decimals = 4) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? num.toFixed(decimals) : "";
+    };
 
     // Étapes du formulaire
     const stepLabels = [
@@ -87,17 +94,37 @@ export default function AddPostService() {
     });
 
     // Géolocalisation automatique avec API gratuite
+    // Pré-remplissage depuis le backend (ip -> ipapi.co via /api/geolocation)
+    useEffect(() => {
+        const geo = getGeo && getGeo();
+        if (geo) {
+            setFormData(prev => ({
+                ...prev,
+                ville: prev.ville || geo.city || prev.ville,
+                pays: prev.pays || geo.country || prev.pays,
+                region: prev.region || geo.region || prev.region,
+                coordonnees: {
+                    lat: geo.latitude != null ? Number(geo.latitude) : prev.coordonnees.lat,
+                    lng: geo.longitude != null ? Number(geo.longitude) : prev.coordonnees.lng
+                },
+                // On bascule en manuel si on a déjà des infos IP pour éviter la demande navigateur
+                locationType: prev.locationType === 'auto' ? 'manual' : prev.locationType
+            }));
+        }
+    }, [getGeo]);
+
+    // Géolocalisation navigateur (fallback si pas de données backend)
     useEffect(() => {
         if (formData.locationType === "auto") {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     async (position) => {
                         try {
-                            const { lat, lng } = position.coords;
+                            const { latitude, longitude } = position.coords;
 
                             // Utilisation de l'API gratuite Nominatim (OpenStreetMap)
                             const response = await fetch(
-                                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=fr`
+                                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1&accept-language=fr`
                             );
 
                             if (response.ok) {
@@ -106,7 +133,7 @@ export default function AddPostService() {
 
                                 setFormData(prev => ({
                                     ...prev,
-                                    coordonnees: { lat, lng },
+                                    coordonnees: { lat: Number(latitude), lng: Number(longitude) },
                                     ville: address.city || address.town || address.village || address.municipality || "Ville non détectée",
                                     quartier: address.suburb || address.quarter || address.neighbourhood || address.district || "Quartier non détecté",
                                     pays: "Cameroun", // Toujours Cameroun
@@ -121,9 +148,9 @@ export default function AddPostService() {
                                 // Fallback si l'API échoue
                                 setFormData(prev => ({
                                     ...prev,
-                                    coordonnees: { lat, lng },
+                                    coordonnees: { lat: Number(latitude), lng: Number(longitude) },
                                     ville: "Position détectée",
-                                    quartier: "Coordonnées: " + lat.toFixed(4) + ", " + lng.toFixed(4),
+                                    quartier: "Coordonnées: " + formatCoord(latitude) + ", " + formatCoord(longitude),
                                     pays: "Cameroun",
                                     region: "Cameroun"
                                 }));
@@ -134,11 +161,11 @@ export default function AddPostService() {
                             setFormData(prev => ({
                                 ...prev,
                                 coordonnees: {
-                                    lat: position.coords.latitude,
-                                    lng: position.coords.longitude
+                                    lat: Number(position.coords.latitude),
+                                    lng: Number(position.coords.longitude)
                                 },
                                 ville: "Position détectée",
-                                quartier: "Coordonnées: " + position.coords.latitude.toFixed(4) + ", " + position.coords.longitude.toFixed(4),
+                                quartier: "Coordonnées: " + formatCoord(position.coords.latitude) + ", " + formatCoord(position.coords.longitude),
                                 pays: "Cameroun",
                                 region: "Cameroun"
                             }));
@@ -250,7 +277,7 @@ export default function AddPostService() {
                 formDataToSend.append('image', formData.image);
             }
 
-            console.log("Données à envoyer:", formDataToSend);
+            console.log("Données à envoyer:", formData);
 
             const response = await axios.post(`${urlApi}/service/add`, formDataToSend, {
                 headers: {
@@ -489,11 +516,11 @@ export default function AddPostService() {
                                                 <label className="block text-xs text-gray-500 mb-1">Quartier</label>
                                                 <p className="font-medium text-sm">{formData.quartier || "En attente..."}</p>
                                             </div>
-                                            {formData.coordonnees.lat && formData.coordonnees.lng && (
+                                            {Number.isFinite(Number(formData.coordonnees.lat)) && Number.isFinite(Number(formData.coordonnees.lng)) && (
                                                 <div>
                                                     <label className="block text-xs text-gray-500 mb-1">Coordonnées GPS</label>
                                                     <p className="font-mono text-xs text-gray-600">
-                                                        {formData.coordonnees.lat.toFixed(6)}, {formData.coordonnees.lng.toFixed(6)}
+                                                        {formatCoord(formData.coordonnees.lat, 6)}, {formatCoord(formData.coordonnees.lng, 6)}
                                                     </p>
                                                 </div>
                                             )}
@@ -881,11 +908,11 @@ export default function AddPostService() {
                                                     <span className="font-medium">{formData.quartier}</span>
                                                 </div>
                                             )}
-                                            {formData.coordonnees.lat && formData.coordonnees.lng && (
+                                            {Number.isFinite(Number(formData.coordonnees.lat)) && Number.isFinite(Number(formData.coordonnees.lng)) && (
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">GPS:</span>
                                                     <span className="font-mono text-xs text-gray-500">
-                                                        {formData.coordonnees.lat.toFixed(4)}, {formData.coordonnees.lng.toFixed(4)}
+                                                        {formatCoord(formData.coordonnees.lat)}, {formatCoord(formData.coordonnees.lng)}
                                                     </span>
                                                 </div>
                                             )}
