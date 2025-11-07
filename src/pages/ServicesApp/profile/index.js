@@ -289,7 +289,7 @@ export default function ProfileServiceApp() {
     const { user } = AuthUser();
     const [profileState, setProfileState] = useState({
         coverPhoto: freelancerData.coverPhoto,
-        profilePhoto: `${urlPublicAPi}/avatars/${user.avatar}`,
+        profilePhoto: `${urlPublicAPi}/${user.avatar}`,
         role: freelancerData.role,
         function: freelancerData.function,
         description: freelancerData.description,

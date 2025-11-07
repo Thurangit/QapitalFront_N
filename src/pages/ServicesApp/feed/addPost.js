@@ -13,7 +13,10 @@ import {
     X,
     Edit2,
     Link as LinkIcon,
-    ExternalLink
+    ExternalLink,
+    Monitor,
+    Briefcase,
+    AlertCircle
 } from "lucide-react";
 import { useNavigate } from 'react-router';
 import axios from "axios";
@@ -21,10 +24,7 @@ import { urlApi } from "../../../modules/urlApp";
 import { toast } from "../../../modules/Components/Toast";
 import AuthUser from "../../../modules/AuthUser";
 
-// Liste des métiers disponibles (exemples)
-const metiers = [
-    "Plombier", "Électricien", "Menuisier", "Peintre", "Maçon",
-];
+// Les métiers seront chargés depuis l'API
 
 // Liste complète des villes du Cameroun (triée alphabétiquement)
 const villesCameroun = [
@@ -49,12 +49,13 @@ const villesCameroun = [
 export default function AddPostService() {
     // États pour le formulaire multi-étapes
     const [step, setStep] = useState(1);
+
     const totalSteps = 4;
     const [loading, setLoading] = useState(false);
     const fileInputRef = useRef(null);
     const cameraInputRef = useRef(null);
     const navigate = useNavigate();
-    const { getGeo } = AuthUser();
+    const { getGeo, user } = AuthUser();
 
     const formatCoord = (value, decimals = 4) => {
         const num = Number(value);
@@ -64,8 +65,8 @@ export default function AddPostService() {
     // Étapes du formulaire
     const stepLabels = [
         "Informations",
-        "Localisation",
         "Détails",
+        "Localisation",
         "Résumé"
     ];
 
@@ -77,41 +78,141 @@ export default function AddPostService() {
         image: null,
         imagePreview: null,
         locationType: "auto", // 'auto' ou 'manual'
-        ville: "",
-        quartier: "",
+        ville: "En ligne",
+        quartier: "En ligne",
         precision: "",
-        coordonnees: { lat: null, lng: null },
+        coordonnees: { lat: 0, lng: 0 },
         pays: "Cameroun", // Défini par défaut
         region: "Cameroun", // Défini par défaut
         montant: "",
         deviseMonnaie: "XAF",
         metierSelectionnes: [],
         nbPrestataires: 1,
-        typeDemandeur: "tous", // 'tous', 'personne' ou 'entreprise'
-        typeDuree: "ponctuelle", // 'ponctuelle', 'determinee', 'indeterminee'
-        dureeMois: 1,
-        dureeUnite: "mois" // 'jours', 'semaines', 'mois', 'annees'
+        typeDemandeur: 1, // 1 = tous, 2 = personne, 3 = entreprise
+        typeDuree: 1, // 1 = ponctuelle, 2 = determinee, 3 = indeterminee
+        dureeMois: 1, // Valeur par défaut
+        dureeUnite: "mois", // Valeur par défaut: 'jours', 'semaines', 'mois', 'annees'
+        modeMission: 2, // 1 = en_ligne, 2 = sur_site, 3 = hybride, 4 = travail_bureau, 5 = urgence, 6 = autre
+        userid: user.id
     });
 
-    // Géolocalisation automatique avec API gratuite
-    // Pré-remplissage depuis le backend (ip -> ipapi.co via /api/geolocation)
+    // Mapping des chiffres vers les labels pour l'affichage
+    const modeMissionLabels = {
+        1: 'En ligne',
+        2: 'Sur site',
+        3: 'Hybride',
+        4: 'Travail de bureau',
+        5: 'Urgence',
+        6: 'Autre'
+    };
+
+    // Injecter l'animation CSS pour le mode de réalisation
     useEffect(() => {
-        const geo = getGeo && getGeo();
-        if (geo) {
-            setFormData(prev => ({
-                ...prev,
-                ville: prev.ville || geo.city || prev.ville,
-                pays: prev.pays || geo.country || prev.pays,
-                region: prev.region || geo.region || prev.region,
-                coordonnees: {
-                    lat: geo.latitude != null ? Number(geo.latitude) : prev.coordonnees.lat,
-                    lng: geo.longitude != null ? Number(geo.longitude) : prev.coordonnees.lng
-                },
-                // On bascule en manuel si on a déjà des infos IP pour éviter la demande navigateur
-                locationType: prev.locationType === 'auto' ? 'manual' : prev.locationType
-            }));
+        const styleId = 'fadeInUp-animation';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = `
+                @keyframes fadeInUp {
+                    from {
+                        opacity: 0;
+                        transform: translateY(-10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+            `;
+            document.head.appendChild(style);
         }
-    }, [getGeo]);
+        return () => {
+            // Optionnel : nettoyer le style à la destruction du composant
+            // const styleElement = document.getElementById(styleId);
+            // if (styleElement) styleElement.remove();
+        };
+    }, []);
+
+    // Charger les métiers depuis l'API (id + libellé)
+    const [metiersOptions, setMetiersOptions] = useState([]);
+    useEffect(() => {
+        let mounted = true;
+        console.log('[AddPost] loadMetiers effect mounted');
+        const loadMetiers = async () => {
+            try {
+                console.log('[AddPost] Fetching metiers from', `${urlApi}/service/type`);
+                const res = await axios.get(`${urlApi}/service/type`);
+                const list = Array.isArray(res.data) ? res.data : [];
+                console.log('[AddPost] Raw services count:', list.length);
+                // Normaliser en {id, label}
+                const normalized = list
+                    .map(it => ({ id: it.id, label: it.libelle_service }))
+                    .filter(it => it.id != null && !!it.label);
+                const uniqueById = Array.from(new Map(normalized.map(it => [it.id, it])).values());
+                console.log('[AddPost] Unique services count:', uniqueById.length);
+                if (!mounted) return;
+                setMetiersOptions(prev => {
+                    const same = prev.length === uniqueById.length && prev.every((v, i) => v.id === uniqueById[i].id && v.label === uniqueById[i].label);
+                    if (same) {
+                        console.log('[AddPost] metiersOptions unchanged, skip setState');
+                        return prev;
+                    }
+                    console.log('[AddPost] Updating metiersOptions');
+                    return uniqueById;
+                });
+            } catch (err) {
+                console.error('[AddPost] Error fetching metiers:', err);
+                if (!mounted) return;
+                setMetiersOptions(prev => (prev.length ? [] : prev));
+            }
+        };
+        loadMetiers();
+        return () => {
+            mounted = false;
+            console.log('[AddPost] loadMetiers effect unmounted');
+        };
+    }, []);
+
+    // Géolocalisation automatique avec API gratuite
+    useEffect(() => {
+        let mounted = true;
+        try {
+            const geo = getGeo && getGeo();
+            console.log('[AddPost] getGeo():', geo);
+            if (mounted && geo) {
+                setFormData(prev => {
+                    const next = {
+                        ...prev,
+                        ville: prev.ville || geo.city || prev.ville,
+                        pays: prev.pays || geo.country || prev.pays,
+                        region: prev.region || geo.region || prev.region,
+                        coordonnees: {
+                            lat: geo.latitude != null ? Number(geo.latitude) : prev.coordonnees.lat,
+                            lng: geo.longitude != null ? Number(geo.longitude) : prev.coordonnees.lng
+                        },
+                        // On bascule en manuel si on a déjà des infos IP pour éviter la demande navigateur
+                        locationType: prev.locationType === 'auto' ? 'manual' : prev.locationType
+                    };
+                    const changed =
+                        next.ville !== prev.ville ||
+                        next.pays !== prev.pays ||
+                        next.region !== prev.region ||
+                        next.locationType !== prev.locationType ||
+                        next.coordonnees.lat !== prev.coordonnees.lat ||
+                        next.coordonnees.lng !== prev.coordonnees.lng;
+                    if (!changed) {
+                        console.log('[AddPost] Geo prefill unchanged, skip setState');
+                        return prev;
+                    }
+                    console.log('[AddPost] Applying geo prefill');
+                    return next;
+                });
+            }
+        } catch (e) {
+            console.error('[AddPost] getGeo error:', e);
+        }
+        return () => { mounted = false; };
+    }, []);
 
     // Géolocalisation navigateur (fallback si pas de données backend)
     useEffect(() => {
@@ -198,12 +299,12 @@ export default function AddPostService() {
         setFormData({ ...formData, [name]: value });
     };
 
-    const handleMetierChange = (metier) => {
+    const handleMetierChange = (metierId) => {
         setFormData({
             ...formData,
-            metierSelectionnes: formData.metierSelectionnes.includes(metier)
-                ? formData.metierSelectionnes.filter(m => m !== metier)
-                : [...formData.metierSelectionnes, metier]
+            metierSelectionnes: formData.metierSelectionnes.includes(metierId)
+                ? formData.metierSelectionnes.filter(m => m !== metierId)
+                : [...formData.metierSelectionnes, metierId]
         });
     };
 
@@ -260,7 +361,7 @@ export default function AddPostService() {
             formDataToSend.append('dureeMois', formData.dureeMois);
             formDataToSend.append('dureeUnite', formData.dureeUnite);
             formDataToSend.append('typeDemandeur', formData.typeDemandeur);
-
+            formDataToSend.append('userid', user.id);
             // Ajouter les coordonnées GPS si disponibles
             if (formData.coordonnees.lat && formData.coordonnees.lng) {
                 formDataToSend.append('latitude', formData.coordonnees.lat);
@@ -276,6 +377,9 @@ export default function AddPostService() {
             if (formData.image) {
                 formDataToSend.append('image', formData.image);
             }
+
+            // Ajouter le mode de mission (déjà un chiffre)
+            formDataToSend.append('modeMission', formData.modeMission || 2);
 
             console.log("Données à envoyer:", formData);
 
@@ -327,9 +431,20 @@ export default function AddPostService() {
 
     // Filtrage des métiers basé sur la recherche
     const [searchMetier, setSearchMetier] = useState("");
-    const filteredMetiers = metiers.filter(metier =>
-        metier.toLowerCase().includes(searchMetier.toLowerCase())
+    const normalizeStr = (s) => (s || "")
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+    const filteredMetiers = metiersOptions.filter((metier) =>
+        normalizeStr(metier.label).includes(normalizeStr(searchMetier))
     );
+    useEffect(() => {
+        if (searchMetier) {
+            console.log('[AddPost] searchMetier =', searchMetier, '=> filteredMetiers:', filteredMetiers.length);
+        }
+    }, [searchMetier, filteredMetiers.length]);
 
     // Filtrage des villes basé sur la recherche
     const [searchVille, setSearchVille] = useState("");
@@ -366,6 +481,91 @@ export default function AddPostService() {
                                 required
                             />
                         </div>
+
+                        {/* Mode de réalisation - affiché seulement si le titre est rempli */}
+                        {formData.titre.trim() && (
+                            <div
+                                className="mt-4 transition-all duration-500 ease-out"
+                                style={{
+                                    animation: 'fadeInUp 0.5s ease-out forwards',
+                                    opacity: 0
+                                }}
+                            >
+                                <label className="block text-sm font-medium mb-2">Mode de réalisation *</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, modeMission: 1 })}
+                                        className={`p-3 border rounded-lg flex flex-col items-center justify-center transition-all ${formData.modeMission === 1
+                                            ? "bg-blue-50 border-blue-500 text-blue-600 shadow-sm"
+                                            : "bg-white hover:bg-gray-50"
+                                            }`}
+                                    >
+                                        <Monitor size={20} className="mb-1" />
+                                        <span className="text-xs font-medium">En ligne</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, modeMission: 2 })}
+                                        className={`p-3 border rounded-lg flex flex-col items-center justify-center transition-all ${formData.modeMission === 2
+                                            ? "bg-blue-50 border-blue-500 text-blue-600 shadow-sm"
+                                            : "bg-white hover:bg-gray-50"
+                                            }`}
+                                    >
+                                        <MapPin size={20} className="mb-1" />
+                                        <span className="text-xs font-medium">Sur site</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, modeMission: 3 })}
+                                        className={`p-3 border rounded-lg flex flex-col items-center justify-center transition-all ${formData.modeMission === 3
+                                            ? "bg-blue-50 border-blue-500 text-blue-600 shadow-sm"
+                                            : "bg-white hover:bg-gray-50"
+                                            }`}
+                                    >
+                                        <Users size={20} className="mb-1" />
+                                        <span className="text-xs font-medium">Hybride</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, modeMission: 4 })}
+                                        className={`p-3 border rounded-lg flex flex-col items-center justify-center transition-all ${formData.modeMission === 4
+                                            ? "bg-blue-50 border-blue-500 text-blue-600 shadow-sm"
+                                            : "bg-white hover:bg-gray-50"
+                                            }`}
+                                    >
+                                        <Briefcase size={20} className="mb-1" />
+                                        <span className="text-xs font-medium">Bureau</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, modeMission: 5 })}
+                                        className={`p-3 border rounded-lg flex flex-col items-center justify-center transition-all ${formData.modeMission === 5
+                                            ? "bg-blue-50 border-blue-500 text-blue-600 shadow-sm"
+                                            : "bg-white hover:bg-gray-50"
+                                            }`}
+                                    >
+                                        <AlertCircle size={20} className="mb-1" />
+                                        <span className="text-xs font-medium">Urgence</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, modeMission: 6 })}
+                                        className={`p-3 border rounded-lg flex flex-col items-center justify-center transition-all ${formData.modeMission === 6
+                                            ? "bg-blue-50 border-blue-500 text-blue-600 shadow-sm"
+                                            : "bg-white hover:bg-gray-50"
+                                            }`}
+                                    >
+                                        <Edit2 size={20} className="mb-1" />
+                                        <span className="text-xs font-medium">Autre</span>
+                                    </button>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Choisissez comment la prestation sera réalisée
+                                </p>
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-sm font-medium mb-1">Détails de l'offre *</label>
                             <textarea
@@ -405,6 +605,7 @@ export default function AddPostService() {
                                 Ajoutez un lien vers des informations complémentaires
                             </p>
                         </div>
+
                         <div className="space-y-4 mt-4">
                             <label className="block text-sm font-medium mb-1">Image</label>
                             <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
@@ -467,207 +668,6 @@ export default function AddPostService() {
             case 2:
                 return (
                     <div className="space-y-4">
-                        <h2 className="text-xl font-semibold mb-4">Localisation</h2>
-                        <div className="space-y-4">
-                            <div className="flex items-center space-x-4">
-                                <div className="flex items-center">
-                                    <input
-                                        type="radio"
-                                        id="locAuto"
-                                        name="locationType"
-                                        value="auto"
-                                        checked={formData.locationType === "auto"}
-                                        onChange={handleInputChange}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <label htmlFor="locAuto" className="ml-2 text-sm font-medium">
-                                        Ma position actuelle
-                                    </label>
-                                </div>
-                                <div className="flex items-center">
-                                    <input
-                                        type="radio"
-                                        id="locManual"
-                                        name="locationType"
-                                        value="manual"
-                                        checked={formData.locationType === "manual"}
-                                        onChange={handleInputChange}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <label htmlFor="locManual" className="ml-2 text-sm font-medium">
-                                        Saisie manuelle
-                                    </label>
-                                </div>
-                            </div>
-
-                            {formData.locationType === "auto" ? (
-                                <div className="space-y-4">
-                                    <div className="bg-gray-50 p-4 rounded-lg border">
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <MapPin size={16} className="text-blue-500" />
-                                            <span className="font-medium">Position détectée automatiquement</span>
-                                        </div>
-                                        <div className="space-y-3">
-                                            <div>
-                                                <label className="block text-xs text-gray-500 mb-1">Ville</label>
-                                                <p className="font-medium text-sm">{formData.ville || "En attente..."}</p>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs text-gray-500 mb-1">Quartier</label>
-                                                <p className="font-medium text-sm">{formData.quartier || "En attente..."}</p>
-                                            </div>
-                                            {Number.isFinite(Number(formData.coordonnees.lat)) && Number.isFinite(Number(formData.coordonnees.lng)) && (
-                                                <div>
-                                                    <label className="block text-xs text-gray-500 mb-1">Coordonnées GPS</label>
-                                                    <p className="font-mono text-xs text-gray-600">
-                                                        {formatCoord(formData.coordonnees.lat, 6)}, {formatCoord(formData.coordonnees.lng, 6)}
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">
-                                            Plus de précisions sur l'emplacement *
-                                        </label>
-                                        <textarea
-                                            name="precision"
-                                            value={formData.precision}
-                                            onChange={handleInputChange}
-                                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="Ajoutez des détails spécifiques sur l'emplacement exact (adresse complète, points de repère, instructions d'accès...)"
-                                            rows={4}
-                                            required
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            Cette information sera visible par les prestataires pour mieux localiser votre besoin
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Ville *</label>
-                                        <div className="relative">
-                                            <input
-                                                type="text"
-                                                value={selectedVille || searchVille}
-                                                onChange={(e) => {
-                                                    const value = e.target.value;
-                                                    setSearchVille(value);
-                                                    setSelectedVille("");
-                                                    setShowVilleDropdown(true);
-
-                                                    // Si la ville correspond exactement à une ville de la liste
-                                                    const exactMatch = villesCameroun.find(ville =>
-                                                        ville.toLowerCase() === value.toLowerCase()
-                                                    );
-                                                    if (exactMatch) {
-                                                        setFormData({ ...formData, ville: exactMatch });
-                                                    } else {
-                                                        setFormData({ ...formData, ville: value });
-                                                    }
-                                                }}
-                                                onFocus={() => setShowVilleDropdown(true)}
-                                                onBlur={() => {
-                                                    // Délai pour permettre le clic sur une option
-                                                    setTimeout(() => setShowVilleDropdown(false), 200);
-                                                }}
-                                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                placeholder="Tapez le nom de votre ville..."
-                                                required
-                                                autoComplete="off"
-                                            />
-
-                                            {/* Icône de recherche */}
-                                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                                </svg>
-                                            </div>
-
-                                            {/* Dropdown des villes */}
-                                            {showVilleDropdown && searchVille && filteredVilles.length > 0 && (
-                                                <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-white border rounded-lg shadow-lg border-gray-200">
-                                                    {filteredVilles.slice(0, 10).map((ville) => (
-                                                        <div
-                                                            key={ville}
-                                                            onClick={() => {
-                                                                setSelectedVille(ville);
-                                                                setSearchVille("");
-                                                                setShowVilleDropdown(false);
-                                                                setFormData({ ...formData, ville: ville });
-                                                            }}
-                                                            className={`p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 ${selectedVille === ville ? 'bg-blue-100' : ''
-                                                                }`}
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-sm font-medium text-gray-900">{ville}</span>
-                                                                {searchVille.toLowerCase() === ville.toLowerCase() && (
-                                                                    <span className="text-xs text-green-600 font-medium">✓</span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-
-                                                    {filteredVilles.length > 10 && (
-                                                        <div className="p-2 text-xs text-gray-500 text-center border-t border-gray-100">
-                                                            {filteredVilles.length - 10} autres villes disponibles...
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* Message si aucune ville trouvée */}
-                                            {showVilleDropdown && searchVille && filteredVilles.length === 0 && (
-                                                <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg border-gray-200">
-                                                    <div className="p-3 text-sm text-gray-500 text-center">
-                                                        Aucune ville trouvée pour "{searchVille}"
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            Commencez à taper le nom de votre ville pour la trouver rapidement
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Quartier *</label>
-                                        <input
-                                            type="text"
-                                            name="quartier"
-                                            value={formData.quartier}
-                                            onChange={handleInputChange}
-                                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="Ex: Bonamoussadi"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Plus de précisions sur l'emplacement *</label>
-                                        <textarea
-                                            name="precision"
-                                            value={formData.precision}
-                                            onChange={handleInputChange}
-                                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="Ajoutez des détails spécifiques sur l'emplacement exact (adresse complète, points de repère, instructions d'accès...)"
-                                            rows={4}
-                                            required
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            Cette information sera visible par les prestataires pour mieux localiser votre besoin
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                );
-
-            case 3:
-                return (
-                    <div className="space-y-4">
                         <h2 className="text-xl font-semibold mb-4">Détails de la prestation</h2>
 
                         <div>
@@ -702,8 +702,8 @@ export default function AddPostService() {
                             <div className="grid grid-cols-3 gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setFormData({ ...formData, typeDuree: "ponctuelle" })}
-                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDuree === "ponctuelle"
+                                    onClick={() => setFormData({ ...formData, typeDuree: 1 })}
+                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDuree === 1
                                         ? "bg-blue-50 border-blue-500 text-blue-600"
                                         : "bg-white"
                                         }`}
@@ -713,8 +713,8 @@ export default function AddPostService() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setFormData({ ...formData, typeDuree: "determinee" })}
-                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDuree === "determinee"
+                                    onClick={() => setFormData({ ...formData, typeDuree: 2 })}
+                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDuree === 2
                                         ? "bg-blue-50 border-blue-500 text-blue-600"
                                         : "bg-white"
                                         }`}
@@ -724,8 +724,8 @@ export default function AddPostService() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setFormData({ ...formData, typeDuree: "indeterminee" })}
-                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDuree === "indeterminee"
+                                    onClick={() => setFormData({ ...formData, typeDuree: 3 })}
+                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDuree === 3
                                         ? "bg-blue-50 border-blue-500 text-blue-600"
                                         : "bg-white"
                                         }`}
@@ -734,34 +734,6 @@ export default function AddPostService() {
                                     <span className="text-xs">Indéterminée</span>
                                 </button>
                             </div>
-
-                            {formData.typeDuree === "determinee" && (
-                                <div className="mt-3">
-                                    <label className="block text-sm font-medium mb-1">Durée estimée</label>
-                                    <div className="flex">
-                                        <input
-                                            type="number"
-                                            name="dureeMois"
-                                            value={formData.dureeMois}
-                                            onChange={handleInputChange}
-                                            min="1"
-                                            max="60"
-                                            className="w-full p-3 border-y border-l rounded-l-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        />
-                                        <select
-                                            name="dureeUnite"
-                                            value={formData.dureeUnite}
-                                            onChange={handleInputChange}
-                                            className="p-3 border-y border-r rounded-r-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        >
-                                            <option value="jours">Jours</option>
-                                            <option value="semaines">Semaines</option>
-                                            <option value="mois">Mois</option>
-                                            <option value="annees">Années</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
                         </div>
 
                         <div>
@@ -778,15 +750,15 @@ export default function AddPostService() {
                                     <div className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto bg-white border rounded-lg shadow-lg">
                                         {filteredMetiers.map((metier) => (
                                             <div
-                                                key={metier}
+                                                key={metier.id}
                                                 onClick={() => {
-                                                    handleMetierChange(metier);
+                                                    handleMetierChange(metier.id);
                                                     setSearchMetier("");
                                                 }}
                                                 className="p-2 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
                                             >
-                                                <span>{metier}</span>
-                                                {formData.metierSelectionnes.includes(metier) && (
+                                                <span>{metier.label}</span>
+                                                {formData.metierSelectionnes.includes(metier.id) && (
                                                     <Check size={16} className="text-green-500" />
                                                 )}
                                             </div>
@@ -796,20 +768,24 @@ export default function AddPostService() {
                             </div>
 
                             <div className="flex flex-wrap gap-2 mt-2">
-                                {formData.metierSelectionnes.map((metier) => (
-                                    <span
-                                        key={metier}
-                                        className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
-                                    >
-                                        {metier}
-                                        <button
-                                            onClick={() => handleMetierChange(metier)}
-                                            className="text-blue-800 hover:text-blue-900"
+                                {formData.metierSelectionnes.map((metierId) => {
+                                    const opt = metiersOptions.find(o => o.id === metierId);
+                                    const label = opt ? opt.label : String(metierId);
+                                    return (
+                                        <span
+                                            key={metierId}
+                                            className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
                                         >
-                                            <X size={14} />
-                                        </button>
-                                    </span>
-                                ))}
+                                            {label}
+                                            <button
+                                                onClick={() => handleMetierChange(metierId)}
+                                                className="text-blue-800 hover:text-blue-900"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </span>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -831,8 +807,8 @@ export default function AddPostService() {
                             <div className="grid grid-cols-3 gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setFormData({ ...formData, typeDemandeur: "tous" })}
-                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDemandeur === "tous"
+                                    onClick={() => setFormData({ ...formData, typeDemandeur: 1 })}
+                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDemandeur === 1
                                         ? "bg-blue-50 border-blue-500 text-blue-600"
                                         : "bg-white"
                                         }`}
@@ -842,8 +818,8 @@ export default function AddPostService() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setFormData({ ...formData, typeDemandeur: "personne" })}
-                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDemandeur === "personne"
+                                    onClick={() => setFormData({ ...formData, typeDemandeur: 2 })}
+                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDemandeur === 2
                                         ? "bg-blue-50 border-blue-500 text-blue-600"
                                         : "bg-white"
                                         }`}
@@ -853,8 +829,8 @@ export default function AddPostService() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setFormData({ ...formData, typeDemandeur: "entreprise" })}
-                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDemandeur === "entreprise"
+                                    onClick={() => setFormData({ ...formData, typeDemandeur: 3 })}
+                                    className={`p-2 border rounded-lg flex flex-col items-center justify-center ${formData.typeDemandeur === 3
                                         ? "bg-blue-50 border-blue-500 text-blue-600"
                                         : "bg-white"
                                         }`}
@@ -863,6 +839,218 @@ export default function AddPostService() {
                                     <span className="text-xs">Entreprise</span>
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                );
+
+            case 3:
+                return (
+                    <div className="space-y-4">
+                        <h2 className="text-xl font-semibold mb-4">Localisation</h2>
+                        <div className="space-y-4">
+                            {formData.modeMission === 1 ? (
+                                <div className="bg-gray-50 p-4 rounded-lg border">
+                                    <p className="text-sm text-gray-700">Prestation en ligne sélectionnée. Aucune localisation n'est requise.</p>
+                                </div>
+                            ) : (
+                                <div>
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium mb-3">Type de position</label>
+                                        <div className="flex items-center space-x-4">
+                                            <div className="flex items-center">
+                                                <input
+                                                    type="radio"
+                                                    id="locAuto"
+                                                    name="locationType"
+                                                    value="auto"
+                                                    checked={formData.locationType === "auto"}
+                                                    onChange={handleInputChange}
+                                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                                                />
+                                                <label htmlFor="locAuto" className="ml-2 text-sm font-medium">
+                                                    Ma position actuelle
+                                                </label>
+                                            </div>
+                                            <div className="flex items-center">
+                                                <input
+                                                    type="radio"
+                                                    id="locManual"
+                                                    name="locationType"
+                                                    value="manual"
+                                                    checked={formData.locationType === "manual"}
+                                                    onChange={handleInputChange}
+                                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                                                />
+                                                <label htmlFor="locManual" className="ml-2 text-sm font-medium">
+                                                    Saisie manuelle
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {formData.locationType === "auto" ? (
+                                        <div className="space-y-4">
+                                            <div className="bg-gray-50 p-4 rounded-lg border">
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <MapPin size={16} className="text-blue-500" />
+                                                    <span className="font-medium">Position détectée automatiquement</span>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <div>
+                                                        <label className="block text-xs text-gray-500 mb-1">Ville</label>
+                                                        <p className="font-medium text-sm">{formData.ville || "En attente..."}</p>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs text-gray-500 mb-1">Quartier</label>
+                                                        <p className="font-medium text-sm">{formData.quartier || "En attente..."}</p>
+                                                    </div>
+                                                    {Number.isFinite(Number(formData.coordonnees.lat)) && Number.isFinite(Number(formData.coordonnees.lng)) && (
+                                                        <div>
+                                                            <label className="block text-xs text-gray-500 mb-1">Coordonnées GPS</label>
+                                                            <p className="font-mono text-xs text-gray-600">
+                                                                {formatCoord(formData.coordonnees.lat, 6)}, {formatCoord(formData.coordonnees.lng, 6)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium mb-2">
+                                                    Plus de précisions sur l'emplacement *
+                                                </label>
+                                                <textarea
+                                                    name="precision"
+                                                    value={formData.precision}
+                                                    onChange={handleInputChange}
+                                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Ajoutez des détails spécifiques sur l'emplacement exact (adresse complète, points de repère, instructions d'accès...)"
+                                                    rows={4}
+                                                    required
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Cette information sera visible par les prestataires pour mieux localiser votre besoin
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4 mt-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-2">Ville *</label>
+                                                <div className="relative">
+                                                    <input
+                                                        type="text"
+                                                        value={selectedVille || searchVille}
+                                                        onChange={(e) => {
+                                                            const value = e.target.value;
+                                                            setSearchVille(value);
+                                                            setSelectedVille("");
+                                                            setShowVilleDropdown(true);
+
+                                                            // Si la ville correspond exactement à une ville de la liste
+                                                            const exactMatch = villesCameroun.find(ville =>
+                                                                ville.toLowerCase() === value.toLowerCase()
+                                                            );
+                                                            if (exactMatch) {
+                                                                setFormData({ ...formData, ville: exactMatch });
+                                                            } else {
+                                                                setFormData({ ...formData, ville: value });
+                                                            }
+                                                        }}
+                                                        onFocus={() => setShowVilleDropdown(true)}
+                                                        onBlur={() => {
+                                                            // Délai pour permettre le clic sur une option
+                                                            setTimeout(() => setShowVilleDropdown(false), 200);
+                                                        }}
+                                                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                        placeholder="Tapez le nom de votre ville..."
+                                                        required
+                                                        autoComplete="off"
+                                                    />
+
+                                                    {/* Icône de recherche */}
+                                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                        </svg>
+                                                    </div>
+
+                                                    {/* Dropdown des villes */}
+                                                    {showVilleDropdown && searchVille && filteredVilles.length > 0 && (
+                                                        <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-white border rounded-lg shadow-lg border-gray-200">
+                                                            {filteredVilles.slice(0, 10).map((ville) => (
+                                                                <div
+                                                                    key={ville}
+                                                                    onClick={() => {
+                                                                        setSelectedVille(ville);
+                                                                        setSearchVille("");
+                                                                        setShowVilleDropdown(false);
+                                                                        setFormData({ ...formData, ville: ville });
+                                                                    }}
+                                                                    className={`p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 ${selectedVille === ville ? 'bg-blue-100' : ''
+                                                                        }`}
+                                                                >
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-sm font-medium text-gray-900">{ville}</span>
+                                                                        {searchVille.toLowerCase() === ville.toLowerCase() && (
+                                                                            <span className="text-xs text-green-600 font-medium">✓</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+
+                                                            {filteredVilles.length > 10 && (
+                                                                <div className="p-2 text-xs text-gray-500 text-center border-t border-gray-100">
+                                                                    {filteredVilles.length - 10} autres villes disponibles...
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Message si aucune ville trouvée */}
+                                                    {showVilleDropdown && searchVille && filteredVilles.length === 0 && (
+                                                        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg border-gray-200">
+                                                            <div className="p-3 text-sm text-gray-500 text-center">
+                                                                Aucune ville trouvée pour "{searchVille}"
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Commencez à taper le nom de votre ville pour la trouver rapidement
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Quartier *</label>
+                                                <input
+                                                    type="text"
+                                                    name="quartier"
+                                                    value={formData.quartier}
+                                                    onChange={handleInputChange}
+                                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Ex: Bonamoussadi"
+                                                    required
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">Plus de précisions sur l'emplacement *</label>
+                                                <textarea
+                                                    name="precision"
+                                                    value={formData.precision}
+                                                    onChange={handleInputChange}
+                                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Ajoutez des détails spécifiques sur l'emplacement exact (adresse complète, points de repère, instructions d'accès...)"
+                                                    rows={4}
+                                                    required
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Cette information sera visible par les prestataires pour mieux localiser votre besoin
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 );
@@ -884,7 +1072,7 @@ export default function AddPostService() {
                                 <div className="mb-4">
                                     <img
                                         src={formData.imagePreview}
-                                        alt="Image de l'offre"
+                                        alt="Offre"
                                         className="w-full h-48 object-cover rounded-lg"
                                     />
                                 </div>
@@ -937,7 +1125,11 @@ export default function AddPostService() {
 
                                 <div>
                                     <p className="font-medium">Prestataires:</p>
-                                    <p>{formData.nbPrestataires} {formData.typeDemandeur === 'tous' ? 'prestataire(s)' : formData.typeDemandeur === 'personne' ? 'individu(s)' : 'entreprise(s)'}</p>
+                                    <p>{formData.nbPrestataires} {formData.typeDemandeur === 1 ? 'prestataire(s)' : formData.typeDemandeur === 2 ? 'individu(s)' : 'entreprise(s)'}</p>
+                                </div>
+                                <div>
+                                    <p className="font-medium">Mode:</p>
+                                    <p>{modeMissionLabels[formData.modeMission] || 'Sur site'}</p>
                                 </div>
                             </div>
 
@@ -945,11 +1137,15 @@ export default function AddPostService() {
                                 <div className="mb-4">
                                     <p className="font-medium">Corps de métier:</p>
                                     <div className="flex flex-wrap gap-2 mt-1">
-                                        {formData.metierSelectionnes.map((metier, index) => (
-                                            <span key={index} className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md text-sm">
-                                                {metier}
-                                            </span>
-                                        ))}
+                                        {formData.metierSelectionnes.map((metierId) => {
+                                            const opt = metiersOptions.find(o => o.id === metierId);
+                                            const label = opt ? opt.label : String(metierId);
+                                            return (
+                                                <span key={metierId} className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md text-sm">
+                                                    {label}
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -957,8 +1153,8 @@ export default function AddPostService() {
                             <div className="mb-4">
                                 <p className="font-medium">Type de mission:</p>
                                 <p>
-                                    {formData.typeDuree === 'ponctuelle' ? 'Tâche ponctuelle' :
-                                        formData.typeDuree === 'determinee' ? `Durée déterminée (${formData.dureeMois} ${formData.dureeUnite})` :
+                                    {formData.typeDuree === 1 ? 'Tâche ponctuelle' :
+                                        formData.typeDuree === 2 ? `Durée déterminée (${formData.dureeMois} ${formData.dureeUnite})` :
                                             'Durée indéterminée'}
                                 </p>
                             </div>
@@ -966,7 +1162,7 @@ export default function AddPostService() {
                             {formData.lien && (
                                 <div className="mb-4 pt-2 border-t border-gray-200">
                                     <a
-                                        href={formData.lien}
+                                        href={formData.lien.startsWith('http://') || formData.lien.startsWith('https://') ? formData.lien : `http://${formData.lien}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex items-center text-blue-600 hover:text-blue-800"
@@ -996,7 +1192,7 @@ export default function AddPostService() {
                                 ) : (
                                     <>
                                         Confirmer et publier
-                                        <Check size={20} />
+
                                     </>
                                 )}
                             </button>
@@ -1007,8 +1203,8 @@ export default function AddPostService() {
                             onClick={() => goToStep(1)}
                             className="w-full py-2 text-blue-600 hover:text-blue-800 flex items-center justify-center gap-1 mt-2"
                         >
-                            <Edit2 size={16} />
-                            Modifier depuis le début
+
+                            Modifier  <Edit2 size={16} />
                         </button>
                     </div>
                 );
@@ -1082,4 +1278,4 @@ export default function AddPostService() {
             </div>
         </div>
     );
-}
+} 

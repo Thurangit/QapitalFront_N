@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Share2, BookmarkIcon, ArrowLeft, Send, MessageCircle, MessageSquare, User, Star, ExternalLink, X, Linkedin, Facebook, Instagram, Mail } from 'lucide-react';
 import AuthUser from '../../../modules/AuthUser';
-import { urlApi, urlPublicAPi } from '../../../modules/urlApp';
+import { urlApi, urlPublicAPi, urlServerImage } from '../../../modules/urlApp';
 import TopBar from '../../../modules/Components/topBar';
+import { toast } from '../../../modules/Components/Toast';
 
 const ShareModal = ({ isOpen, onClose, postId }) => {
     if (!isOpen) return null;
@@ -64,38 +65,65 @@ const ShareModal = ({ isOpen, onClose, postId }) => {
     );
 };
 
-const Rating = ({ value = 0 }) => {
-    const stars = useMemo(() => Array.from({ length: 5 }, (_, i) => i < Math.round(value)), [value]);
+const Rating = ({ value = 0, size = 'md' }) => {
+    const clamped = Math.max(0, Math.min(5, Number(value) || 0));
+    const starFillPercents = useMemo(() => (
+        Array.from({ length: 5 }, (_, i) => {
+            const diff = clamped - i;
+            if (diff >= 1) return 100;
+            if (diff <= 0) return 0;
+            return Math.round(diff * 100);
+        })
+    ), [clamped]);
+
+    const starSizeClass = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
+    const textSizeClass = size === 'sm' ? 'text-[9px]' : 'text-[10px]';
+
     return (
-        <div className="flex items-center">
-            {stars.map((filled, idx) => (
-                <Star key={idx} className={`w-4 h-4 ${filled ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} />
-            ))}
+        <div className="flex items-center gap-1">
+            <div className="flex items-center">
+                {starFillPercents.map((pct, idx) => (
+                    <span key={idx} className={`relative inline-block ${starSizeClass}`}>
+                        <Star className={`${starSizeClass} text-gray-300`} />
+                        <span className="absolute inset-0 overflow-hidden" style={{ width: `${pct}%` }}>
+                            <Star className={`${starSizeClass} text-yellow-400 fill-yellow-400`} />
+                        </span>
+                    </span>
+                ))}
+            </div>
+            <span className={`${textSizeClass} text-gray-500`}>{clamped.toFixed(2)}</span>
         </div>
     );
 };
 
 const ApplicantCard = ({ applicant, onContact, onViewProfile }) => {
     const u = applicant.user || {};
+    const photoUrl = u.photo?.startsWith('http')
+        ? u.photo
+        : u.photo
+            ? `${urlServerImage}/${u.photo}`
+            : '/api/placeholder/64/64';
     return (
         <div className="flex items-start p-3 bg-white rounded-lg border border-gray-200">
-            <img src={u.photo || '/api/placeholder/64/64'} alt={u.nom || 'user'} className="w-12 h-12 rounded-full object-cover" />
+            <img src={photoUrl} alt={u.nom || 'user'} className="w-12 h-12 rounded-full object-cover" />
             <div className="ml-3 flex-1">
                 <div className="flex justify-between items-start">
                     <div>
-                        <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-semibold">{[u.nom, u.prenom].filter(Boolean).join(' ') || 'Utilisateur'}</h4>
-                            <Rating value={u.note || 0} />
-                        </div>
+                        <h4 className="text-sm font-semibold">{[u.nom, u.prenom].filter(Boolean).join(' ') || 'Utilisateur'}</h4>
                         <p className="text-xs text-gray-500 mt-0.5">{u.qualification || 'Qualification non renseignée'}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button onClick={onContact} className="px-2 py-1 text-xs rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center gap-1">
-                            <MessageCircle className="w-3 h-3" /> Contacter
-                        </button>
-                        <button onClick={onViewProfile} className="px-2 py-1 text-xs rounded-md bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center gap-1">
-                            <User className="w-3 h-3" /> Profil
-                        </button>
+                    <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-2">
+                            <button onClick={onContact} className="px-2 py-1 text-xs rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center gap-1">
+                                <MessageCircle className="w-3 h-3" /> Contacter
+                            </button>
+                            <button onClick={onViewProfile} className="px-2 py-1 text-xs rounded-md bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center gap-1">
+                                <User className="w-3 h-3" /> Profil
+                            </button>
+                        </div>
+                        <div className="mt-0.5">
+                            <Rating value={u.note || 0} size="sm" />
+                        </div>
                     </div>
                 </div>
                 <p className="text-xs text-gray-700 mt-2">{applicant.message || 'Aucun commentaire'}</p>
@@ -113,7 +141,7 @@ const formatDate = (dateString) => {
 export default function PostDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { http } = AuthUser();
+    const { http, user } = AuthUser();
 
     const [loading, setLoading] = useState(true);
     const [post, setPost] = useState(null);
@@ -123,91 +151,95 @@ export default function PostDetails() {
     const [applyOpen, setApplyOpen] = useState(false);
     const [applyText, setApplyText] = useState('');
     const [service_info, setservice_info] = useState([]);
-    useEffect(() => {
-        fetchAllservice_info();
-    }, []);
+    const [submitting, setSubmitting] = useState(false);
 
     const fetchAllservice_info = () => {
         http.get(`${urlApi}/service/info/${id}`).then(res => {
             setservice_info(res.data);
-        })
+        }).catch(err => {
+            console.error("Erreur lors du chargement des informations du service:", err);
+        });
     }
-    console.log("Test")
-    console.log(service_info)
+
+    const fetchAllCandidates = async () => {
+        try {
+            const appsRes = await http.get(`${urlApi}/service/candidature/all/${id}`).catch(() => ({ data: [] }));
+            const allCandidates = Array.isArray(appsRes.data) ? appsRes.data : [];
+            console.log(allCandidates)
+            // Filtrer les candidatures pour cette publication spécifique
+            const filteredCandidates = allCandidates.filter(candidate => {
+                const candidateServiceId = candidate.id_service || candidate.id_post || candidate.post_id || candidate.service_id;
+                return candidateServiceId === id || candidateServiceId === parseInt(id) || String(candidateServiceId) === String(id);
+            });
+
+            if (filteredCandidates.length > 0) {
+                const apps = await Promise.all(filteredCandidates.map(async (a) => {
+                    // Prendre les informations renvoyées par l'API backend (clé "prestataire")
+                    const userInfo = a.prestataire || a.user || {};
+
+                    return {
+                        id: a.id,
+                        message: a.commentaire_prestataire || a.message || a.commentaire || '',
+                        user: {
+                            id: a.id_prestataire || a.user_id || a.prestataire_id || userInfo.id,
+                            nom: userInfo.nom || 'Nom',
+                            prenom: userInfo.prenom || 'Prénom',
+                            qualification: userInfo.qualification || 'Non renseignée',
+                            note: (typeof userInfo.note_user !== 'undefined' ? Number(userInfo.note_user) : (typeof a.note !== 'undefined' ? Number(a.note) : 0)) || 0,
+                            photo: userInfo.avatar || userInfo.photo || '/api/placeholder/64/64',
+                        },
+                    };
+                }));
+
+                setApplicants(apps);
+            } else {
+                // Si aucune candidature réelle, utiliser les données mockées uniquement en développement
+                setApplicants([]);
+            }
+        } catch (error) {
+            console.error("Erreur lors du chargement des candidatures:", error);
+            setApplicants([]);
+        }
+    }
+
+    useEffect(() => {
+        fetchAllservice_info();
+        fetchAllCandidates();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id]);
     const getMockPost = (mockId) => ({
         id: service_info.id,
         titre: service_info.titre,
         details: service_info.details,
         image: `${urlPublicAPi}/${service_info.image}`,
-        created_at: new Date().toISOString(),
-        author: "Client Anonyme",
-        profilePic: "/api/placeholder/40/40",
+        created_at: service_info?.created_at,
+        author: `${service_info?.user?.nom} ${service_info?.user?.prenom}`,
+        profilePic: `${urlServerImage}/${service_info?.user?.avatar}`,
         category: "/électricité",
         // Champs supplémentaires issus de la création d'offre
-        ville: "Douala",
-        quartier: "Bonamoussadi",
-        precision: "Immeuble bleu, 3e étage, porte à gauche",
-        pays: "Cameroun",
+        ville: service_info?.ville,
+        quartier: service_info?.quartier,
+        precision: service_info?.description_position,
+        pays: service_info?.pays,
         region: "Littoral",
         montant: service_info.montant,
         deviseMonnaie: service_info.devise,
-        typeDuree: "determinee",
+        typeDuree: service_info?.type_duree_postservice,
         dureeMois: 2,
-        dureeUnite: "semaines",
-        metierSelectionnes: ["Électricien"],
-        nbPrestataires: 1,
+        dureeUnite: service_info?.type_duree_postservice,
+        metierSelectionnes: ["Électricien", "Technicien courant faible", "Installateur panneaux solaires"],
+        nbPrestataires: service_info?.nombre_prestataire,
         typeDemandeur: "personne",
         lien: service_info.lienhttp,
         coordonnees: { lat: 4.081, lng: 9.767 },
     });
 
-    const getMockApplicants = () => ([
-        {
-            id: 101,
-            message: "Je peux passer aujourd'hui à partir de 16h. J'apporterai mon multimètre et de quoi sécuriser le circuit.",
-            user: {
-                id: 9001,
-                nom: "Kamdem",
-                prenom: "Paul",
-                qualification: "Électricien certifié (5 ans d'expérience)",
-                note: 4.5,
-                photo: "https://i.pravatar.cc/64?img=11",
-            },
-        },
-        {
-            id: 102,
-            message: "Disponible demain matin. Je propose un diagnostic rapide et une réparation le jour même si pièces disponibles.",
-            user: {
-                id: 9002,
-                nom: "Nana",
-                prenom: "Brigitte",
-                qualification: "Technicienne électricienne résidentielle",
-                note: 4.8,
-                photo: "https://i.pravatar.cc/64?img=15",
-            },
-        },
-        {
-            id: 103,
-            message: "J'interviens souvent à Bonamoussadi. Intervention ce soir possible. Garantie 30 jours.",
-            user: {
-                id: 9003,
-                nom: "Mvoula",
-                prenom: "Hervé",
-                qualification: "Artisan électricien",
-                note: 4.2,
-                photo: "https://i.pravatar.cc/64?img=18",
-            },
-        },
-    ]);
 
     useEffect(() => {
         let mounted = true;
         const load = async () => {
             try {
-                const [postRes, appsRes] = await Promise.all([
-                    http.get(`${urlApi}/service/${id}`).catch(() => ({ data: {} })),
-                    http.get(`${urlApi}/service/${id}/applications`).catch(() => ({ data: [] })),
-                ]);
+                const postRes = await http.get(`${urlApi}/service/${id}`).catch(() => ({ data: {} }));
                 if (!mounted) return;
                 const p = postRes.data || {};
                 // mapping fallback to match feed fields
@@ -234,53 +266,101 @@ export default function PostDetails() {
                     nbPrestataires: p.nbPrestataires,
                     typeDemandeur: p.typeDemandeur,
                     lien: p.lien,
-                    coordonnees: { lat: p.latitude, lng: p.longitude },
+                    modeMission: p.modeMission || p.mode_mission || p.type_mission || undefined,
                 };
                 const hasRealPost = !!(p && (p.titre || p.title || p.description || p.details));
-                setPost(hasRealPost ? mapped : getMockPost(id));
-                const appsFetched = (appsRes.data || []).map((a) => ({
-                    id: a.id,
-                    message: a.message || a.commentaire,
-                    user: a.user || {
-                        id: a.user_id,
-                        nom: a.nom || 'Nom',
-                        prenom: a.prenom || 'Prénom',
-                        qualification: a.qualification || 'Non renseignée',
-                        note: a.note || 0,
-                        photo: a.photo || '/api/placeholder/64/64',
-                    },
-                }));
-                setApplicants(appsFetched.length ? appsFetched : getMockApplicants());
+                // Si les données réelles ne sont pas disponibles, utiliser service_info comme fallback
+                const finalPost = hasRealPost ? mapped : (service_info && service_info.id ? getMockPost(id) : mapped);
+                setPost(finalPost);
             } finally {
                 if (mounted) setLoading(false);
             }
         };
         load();
         return () => { mounted = false; };
-    }, [http, id]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [http, id, service_info]);
 
     const submitApplication = async () => {
+        // Vérifier que l'utilisateur est connecté
+        if (!user || !user.id) {
+            toast.error(
+                "Vous devez être connecté pour postuler à une offre.",
+                "Connexion requise"
+            );
+            return;
+        }
+
+        setSubmitting(true);
         try {
-            await http.post(`${urlApi}/service/${id}/apply`, { message: applyText || undefined });
+            // Préparer les données pour l'endpoint
+            const candidateData = {
+                id_prestataire: user.id,
+                id_service: service_info.id,
+                commentaire_prestataire: applyText || ''
+            };
+
+            // Envoyer la candidature
+            await http.post(`${urlApi}/service/candidature/add`, candidateData);
+
+            // Afficher la notification de succès
+            toast.success(
+                "Votre candidature a été envoyée avec succès !",
+                "Candidature envoyée"
+            );
+
+            // Réinitialiser le formulaire
             setApplyText('');
             setApplyOpen(false);
-            // refresh applicants
-            const appsRes = await http.get(`${urlApi}/service/${id}/applications`).catch(() => ({ data: [] }));
-            const apps = (appsRes.data || []).map((a) => ({
-                id: a.id,
-                message: a.message || a.commentaire,
-                user: a.user || {
-                    id: a.user_id,
-                    nom: a.nom || 'Nom',
-                    prenom: a.prenom || 'Prénom',
-                    qualification: a.qualification || 'Non renseignée',
-                    note: a.note || 0,
-                    photo: a.photo || '/api/placeholder/64/64',
-                },
-            }));
-            setApplicants(apps);
-        } catch (e) {
-            // noop UI toast could be added
+
+            // Recharger toutes les candidatures pour afficher immédiatement la nouvelle
+            await fetchAllCandidates();
+
+        } catch (error) {
+            console.error("Erreur lors de la soumission de la candidature:", error);
+
+            // Messages d'erreur user-friendly
+            let errorMessage = "Une erreur inattendue s'est produite lors de l'envoi de votre candidature.";
+            let errorTitle = "Erreur d'envoi";
+
+            if (error.response) {
+                // Erreur de réponse du serveur
+                const status = error.response.status;
+                const data = error.response.data;
+
+                if (status === 400) {
+                    errorMessage = data?.message || "Les données envoyées sont invalides. Veuillez vérifier vos informations.";
+                    errorTitle = "Données invalides";
+                } else if (status === 401) {
+                    errorMessage = "Votre session a expiré. Veuillez vous reconnecter.";
+                    errorTitle = "Session expirée";
+                } else if (status === 403) {
+                    errorMessage = "Vous n'avez pas la permission de postuler à cette offre.";
+                    errorTitle = "Permission refusée";
+                } else if (status === 404) {
+                    errorMessage = "Cette offre n'existe plus ou a été supprimée.";
+                    errorTitle = "Offre introuvable";
+                } else if (status === 409) {
+                    errorMessage = data?.message || "Vous avez déjà postulé à cette offre.";
+                    errorTitle = "Candidature existante";
+                } else if (status === 422) {
+                    errorMessage = data?.message || "Les données fournies ne sont pas valides. Veuillez vérifier votre saisie.";
+                    errorTitle = "Validation échouée";
+                } else if (status === 500) {
+                    errorMessage = "Une erreur serveur s'est produite. Veuillez réessayer plus tard.";
+                    errorTitle = "Erreur serveur";
+                } else {
+                    errorMessage = data?.message || errorMessage;
+                }
+            } else if (error.request) {
+                // Pas de réponse du serveur
+                errorMessage = "Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez.";
+                errorTitle = "Problème de connexion";
+            }
+
+            toast.error(errorMessage, errorTitle);
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -349,11 +429,11 @@ export default function PostDetails() {
                     {/* Titre */}
                     <div className="bg-white px-4 pt-4">
                         <h2 className="text-xl font-bold text-gray-900">{post.titre}</h2>
-                        {post.category && (
+                        {/* {post.category && (
                             <div className="mt-2 flex items-center">
                                 <span className="text-xs text-blue-600 font-medium">{post.category}</span>
                             </div>
-                        )}
+                        )} */}
                     </div>
 
                     {/* Image */}
@@ -381,20 +461,28 @@ export default function PostDetails() {
                     {activeTab === 'resume' && (
                         <div className="bg-white px-4 py-4 border-b border-gray-200">
                             <p className="text-sm text-gray-800 whitespace-pre-line">{post.details || 'Aucune description'}</p>
+                            {post.modeMission && (
+                                <div className="mt-3">
+                                    <p className="text-xs text-gray-500">Mode de réalisation</p>
+                                    <p className="text-sm font-medium">
+                                        {post.modeMission === 'en_ligne' ? 'En ligne' : post.modeMission === 'hybride' ? 'Hybride' : 'Présentiel'}
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {activeTab === 'localisation' && (
                         <div className="bg-white px-4 py-4 border-b border-gray-200">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
+                                {/* <div>
                                     <p className="text-xs text-gray-500">Pays</p>
                                     <p className="text-sm font-medium">{post.pays || 'Cameroun'}</p>
                                 </div>
                                 <div>
                                     <p className="text-xs text-gray-500">Région</p>
                                     <p className="text-sm font-medium">{post.region || '—'}</p>
-                                </div>
+                                </div> */}
                                 <div>
                                     <p className="text-xs text-gray-500">Ville</p>
                                     <p className="text-sm font-medium">{post.ville || '—'}</p>
@@ -410,12 +498,7 @@ export default function PostDetails() {
                                     <p className="text-sm text-gray-800">{post.precision}</p>
                                 </div>
                             )}
-                            {post.coordonnees && (post.coordonnees.lat || post.coordonnees.lng) && (
-                                <div className="mt-3">
-                                    <p className="text-xs text-gray-500">Coordonnées GPS</p>
-                                    <p className="text-sm font-mono text-gray-700">{post.coordonnees.lat}, {post.coordonnees.lng}</p>
-                                </div>
-                            )}
+
                         </div>
                     )}
 
@@ -428,33 +511,42 @@ export default function PostDetails() {
                                 </div>
                                 <div>
                                     <p className="text-xs text-gray-500">Prestataires recherchés</p>
-                                    <p className="text-sm font-medium">{post.nbPrestataires || 1} ({post.typeDemandeur || 'tous'})</p>
+                                    <p className="text-sm font-medium">{post.nbPrestataires || 1} </p>
                                 </div>
                                 <div>
                                     <p className="text-xs text-gray-500">Type de durée</p>
                                     <p className="text-sm font-medium">{post.typeDuree || 'ponctuelle'}</p>
                                 </div>
-                                {post.typeDuree === 'determinee' && (
+                                {post.modeMission && (
+                                    <div>
+                                        <p className="text-xs text-gray-500">Mode</p>
+                                        <p className="text-sm font-medium">{post.modeMission === 'en_ligne' ? 'En ligne' : post.modeMission === 'hybride' ? 'Hybride' : 'Présentiel'}</p>
+                                    </div>
+                                )}
+                                {/*  {post.typeDuree === 'determinee' && (
                                     <div>
                                         <p className="text-xs text-gray-500">Durée estimée</p>
                                         <p className="text-sm font-medium">{post.dureeMois} {post.dureeUnite}</p>
                                     </div>
-                                )}
+                                )} */}
                             </div>
                         </div>
                     )}
 
                     {activeTab === 'metiers' && (
                         <div className="bg-white px-4 py-4 border-b border-gray-200">
-                            {Array.isArray(post.metierSelectionnes) && post.metierSelectionnes.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
-                                    {post.metierSelectionnes.map((m, i) => (
-                                        <span key={`${m}-${i}`} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">{m}</span>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-gray-500">Aucun corps de métier spécifié.</p>
-                            )}
+
+
+                            <div className="flex flex-wrap gap-2">
+                                {service_info.services_metiers && service_info.services_metiers.length > 0 ? (
+                                    service_info.services_metiers.map((m, i) => (
+                                        <span key={`${m.id || i}`} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">{m.libelle_serviceMetier}</span>
+                                    ))
+                                ) : (
+                                    <p className="text-sm text-gray-500">Aucun métier spécifié</p>
+                                )}
+                            </div>
+
                         </div>
                     )}
 
@@ -485,10 +577,36 @@ export default function PostDetails() {
                     {applyOpen && (
                         <div className="bg-white px-4 py-4 border-b border-gray-200">
                             <label className="block text-sm font-medium text-gray-700 mb-2">Votre proposition (facultatif)</label>
-                            <textarea value={applyText} onChange={(e) => setApplyText(e.target.value)} rows={4} placeholder="Expliquez brièvement votre approche, disponibilité, tarif..." className="w-full border border-gray-300 rounded-md p-2 text-sm outline-none focus:ring-2 focus:ring-blue-200" />
+                            <textarea
+                                value={applyText}
+                                onChange={(e) => setApplyText(e.target.value)}
+                                rows={4}
+                                placeholder="Expliquez brièvement votre approche, disponibilité, tarif..."
+                                className="w-full border border-gray-300 rounded-md p-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+                                disabled={submitting}
+                            />
                             <div className="flex justify-end mt-2">
-                                <button onClick={submitApplication} className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm flex items-center gap-2">
-                                    <Send className="w-4 h-4" /> Envoyer la candidature
+                                <button
+                                    onClick={submitApplication}
+                                    disabled={submitting}
+                                    className={`px-4 py-2 rounded-md text-white text-sm flex items-center gap-2 ${submitting
+                                        ? 'bg-gray-400 cursor-not-allowed'
+                                        : 'bg-blue-600 hover:bg-blue-700'
+                                        }`}
+                                >
+                                    {submitting ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                            </svg>
+                                            Envoi en cours...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Send className="w-4 h-4" /> Envoyer ma candidature
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </div>

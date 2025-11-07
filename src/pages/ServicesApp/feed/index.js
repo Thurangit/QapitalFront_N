@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Search, Plus, Home, Heart, MessageCircle, Calendar, Share2, MoreHorizontal, Bell, User, Menu, Settings, Briefcase, Users, ChevronRight, ChevronLeft, Newspaper, ContactRound, Contact, BriefcaseBusiness, MapPinIcon, BookmarkIcon, Eye, X, Linkedin, Facebook, Instagram, MessageSquare, Mail, ExternalLink } from 'lucide-react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Search, Plus, MessageCircle, Calendar, Share2, MoreHorizontal, Bell, User, Menu, Settings, Briefcase, ChevronRight, ChevronLeft, Newspaper, Contact, BriefcaseBusiness, MapPinIcon, BookmarkIcon, X, Linkedin, Facebook, Instagram, MessageSquare, Mail, ExternalLink } from 'lucide-react';
 import { StaticsImages } from '../../../modules/images';
 import ServicesProviders from '../providers';
 import { NavigationBar } from '../../../modules/Components/bottomFloatting';
 import { useNavigate } from 'react-router';
-import { Axios } from 'axios';
-import { urlApi, urlPublicAPi } from '../../../modules/urlApp';
+import { urlApi, urlPublicAPi, urlServerImage } from '../../../modules/urlApp';
 import AuthUser from '../../../modules/AuthUser';
 
 
@@ -57,7 +56,7 @@ const TabItem = ({ icon, label, isActive, onClick }) => {
 };
 
 const UserCard = ({ user, size = 'normal', onClick }) => {
-    const { name, roles, minia, photo, isNew, description, country, isOnline, id } = user;
+    const { name, minia, photo, isNew, description, country, id } = user;
 
     const cardClasses = {
         normal: 'w-full',
@@ -124,7 +123,7 @@ export const CarouselAdvense = ({ items, title, renderItem, autoScroll = false, 
         }
     };
 
-    const scrollRight = (resetTimer = false) => {
+    const scrollRight = useCallback((resetTimer = false) => {
         if (carouselRef.current) {
             const { scrollLeft, scrollWidth, clientWidth } = carouselRef.current;
 
@@ -147,7 +146,7 @@ export const CarouselAdvense = ({ items, title, renderItem, autoScroll = false, 
                 autoScrollTimerRef.current = setInterval(scrollRight, scrollInterval);
             }
         }
-    };
+    }, [autoScroll, scrollInterval]);
 
     const handleScroll = () => {
         if (carouselRef.current) {
@@ -168,7 +167,7 @@ export const CarouselAdvense = ({ items, title, renderItem, autoScroll = false, 
                 }
             };
         }
-    }, [autoScroll, scrollInterval]);
+    }, [autoScroll, scrollInterval, scrollRight]);
 
     useEffect(() => {
         const carousel = carouselRef.current;
@@ -262,17 +261,7 @@ export const NearbyPage = ({ users }) => {
     );
 };
 
-// Composant pour la section des commentaires du post
-const PostComments = ({ username, comment }) => {
-    return (
-        <div className="flex text-gray-500 mt-1">
-            <button className="flex items-center mr-4">
-                <span className="text-xs">@{username}:</span>
-                <span className="text-xs ml-1">{comment}</span>
-            </button>
-        </div>
-    );
-};
+// (Commentaires retirés)
 
 // Modal de partage
 const ShareModal = ({ isOpen, onClose, postId }) => {
@@ -384,6 +373,36 @@ const Post = ({ post, saved, toggleSaved }) => {
     // Vérifier si le texte a besoin d'être tronqué
     const needsTruncation = post.details.split(' ').length > 40;
 
+    // Déduire des métiers d'exemple lorsque non fournis
+    const computeMetiers = (p) => {
+        const provided = Array.isArray(p.metierSelectionnes) ? p.metierSelectionnes.filter(Boolean) : [];
+        if (provided.length > 0) return provided;
+        const source = `${p.category || ''} ${p.titre || ''} ${p.details || ''}`.toLowerCase();
+        if (/(électric|electric)/.test(source)) {
+            return ["Électricien", "Technicien courant faible", "Installateur panneaux solaires"];
+        }
+        if (/(plomb|sanit|canalis)/.test(source)) {
+            return ["Plombier", "Technicien sanitaire", "Dépannage fuite d'eau"];
+        }
+        if (/(menuis|bois|charpent)/.test(source)) {
+            return ["Menuisier", "Ébéniste", "Charpentier"];
+        }
+        if (/(peint|revêtement)/.test(source)) {
+            return ["Peintre bâtiment", "Poseur de revêtements", "Enduiseur"];
+        }
+        if (/(informat|site|web|logiciel|it|réseau)/.test(source)) {
+            return ["Développeur web", "Technicien réseau", "Intégrateur"];
+        }
+        if (/(jardin|espaces verts|paysag)/.test(source)) {
+            return ["Jardinier", "Paysagiste", "Élagueur"];
+        }
+        if (/(maçon|béton|chape)/.test(source)) {
+            return ["Maçon", "Coffreur", "Carreleur"];
+        }
+        return ["Artisan", "Technicien", "Consultant"];
+    };
+    const metiersToShow = computeMetiers(post);
+
     return (
 
 
@@ -392,12 +411,13 @@ const Post = ({ post, saved, toggleSaved }) => {
             {/* Post Header */}
             <div className="flex items-center px-3 py-2">
                 <img
-                    src={post.profilePic}
-                    alt={post.author}
+
+                    src={`${urlServerImage}/${post?.user?.avatar}`}
+                    alt={""}
                     className="w-8 h-8 rounded-full mr-2 object-cover"
                 />
                 <div className="flex-1">
-                    <h3 className="text-sm font-medium text-gray-900">{post.author}</h3>
+                    <h3 className="text-sm font-medium text-gray-900">{post?.user?.nom} {post?.user?.prenom}</h3>
                     <p className="text-xs text-gray-500">{formatDate(post.created_at)}</p>
                 </div>
                 <button className="text-gray-500">
@@ -447,16 +467,23 @@ const Post = ({ post, saved, toggleSaved }) => {
                 </div>
             )}
 
-            {/* Post Footer */}
+            {/* Footer: localisation + métiers */}
             <div className="px-3 pt-2">
-                <div className="flex items-center">
-                    <div className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center mr-2">
-                        <span className="text-red-500 text-xs">/</span>
-                    </div>
-                    <span className="text-red-500 font-medium text-xs">{post.category || "/womenswears"}</span>
+                <div className="flex items-center text-xs text-gray-600">
+                    <MapPinIcon className="w-3 h-3 text-red-600 mr-1" />
+                    <span>
+                        {post.ville || '—'}{post.quartier ? ` • ${post.quartier}` : ''}
+                    </span>
                 </div>
 
-                <PostComments username={post.username} comment="Love this outfit." />
+                <div className="flex flex-wrap gap-2 mt-2">
+                    {post.services_metiers.slice(0, 10).map((m, i) => (
+                        <span key={`${m}-${i}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
+                            {m.libelle_serviceMetier}
+                        </span>
+                    ))}
+                </div>
+
 
                 <div className="flex justify-between mt-2 pt-2 border-t border-gray-100">
                     <div className="flex">
@@ -494,12 +521,10 @@ const Post = ({ post, saved, toggleSaved }) => {
 // Composant pour la page de fil d'actualité
 const FeedPage = ({ posts, saved, toggleSaved }) => {
     const [users, setUsers] = useState([]);
-    const [loading, setLoading] = useState(true);
 
     // Simuler des données d'utilisateurs
     useEffect(() => {
         const generateUsers = () => {
-            setLoading(true);
             const users = [
                 {
                     id: 1, name: 'July', roles: '',
@@ -534,7 +559,6 @@ const FeedPage = ({ posts, saved, toggleSaved }) => {
             ];
 
             setUsers(users);
-            setLoading(false);
         };
 
         // Simulating API delay
@@ -606,18 +630,7 @@ const RequestsPage = () => {
     );
 };
 
-// Page pour les talents
-const TalentsPage = () => {
-    return (
-        <div className="h-full overflow-y-auto flex flex-col items-center justify-center p-6 text-center">
-            <Briefcase className="w-16 h-16 text-blue-500 mb-4" />
-            <h2 className="text-xl font-bold text-gray-800 mb-2">Talents</h2>
-            <p className="text-gray-600 max-w-md">
-                Découvrez les talents dans votre domaine et créez des connections professionnelles.
-            </p>
-        </div>
-    );
-};
+// (TalentsPage removed - using ServicesProviders component instead)
 
 // Menu latéral
 const SideMenu = ({ isOpen, onClose }) => {
@@ -660,22 +673,22 @@ const SideMenu = ({ isOpen, onClose }) => {
                             </a>
                         </li>
                         <li className="mb-4">
-                            <a href="#" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
+                            <button className="w-full flex items-center p-2 rounded-lg hover:bg-gray-100 text-left">
                                 <BookmarkIcon className="w-5 h-5 mr-3 text-blue-500" />
                                 <span>Enregistrés</span>
-                            </a>
+                            </button>
                         </li>
                         <li className="mb-4">
-                            <a href="#" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
+                            <button className="w-full flex items-center p-2 rounded-lg hover:bg-gray-100 text-left">
                                 <Bell className="w-5 h-5 mr-3 text-blue-500" />
                                 <span>Notifications</span>
-                            </a>
+                            </button>
                         </li>
                         <li className="mb-4">
-                            <a href="#" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
+                            <button className="w-full flex items-center p-2 rounded-lg hover:bg-gray-100 text-left">
                                 <Settings className="w-5 h-5 mr-3 text-blue-500" />
                                 <span>Paramètres</span>
-                            </a>
+                            </button>
                         </li>
                     </ul>
                 </nav>
@@ -782,20 +795,15 @@ export default function IndexFeed() {
 
     ];
 
-    const { http, user } = AuthUser();
+    const { http } = AuthUser();
     const [services_list, setservices_list] = useState([]);
     useEffect(() => {
-        fetchAllservices_list();
-    }, []);
-
-    const fetchAllservices_list = () => {
-
         http.get(`${urlApi}/service/all`).then(res => {
             setservices_list(res.data);
-        })
-    }
-    console.log("Test")
-    console.log(services_list)
+            console.log(res.data)
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
 
     // Fonction pour afficher le contenu en fonction de l'onglet actif
