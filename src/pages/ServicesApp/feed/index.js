@@ -351,6 +351,51 @@ const formatDate = (dateString) => {
     }
 };
 
+// Liste des états de mission avec leurs couleurs
+const etatMissions = {
+    1: { etat_mission: "Publié", color: "bg-blue-100 text-blue-800" },
+    2: { etat_mission: "Prestataire sur site", color: "bg-cyan-100 text-cyan-800" },
+    3: { etat_mission: "En cours", color: "bg-yellow-100 text-yellow-800" },
+    4: { etat_mission: "Achevé", color: "bg-green-100 text-green-800" },
+    5: { etat_mission: "Soldé", color: "bg-purple-100 text-purple-800" },
+    6: { etat_mission: "Terminé", color: "bg-emerald-100 text-emerald-800" },
+    7: { etat_mission: "Annulé", color: "bg-red-100 text-red-800" }
+};
+
+// Fonction pour obtenir les informations de l'état de la mission
+const getEtatMission = (stateId, etatMissionData = null) => {
+    // Déterminer le state_id réel (peut venir du post ou de la relation)
+    let stateIdNum = typeof stateId === 'string' ? parseInt(stateId) : (stateId || 1);
+
+    // Si les données de l'état sont fournies directement (depuis l'API Laravel)
+    // Laravel retourne la relation comme un objet avec les propriétés
+    if (etatMissionData) {
+        // Si c'est un objet avec la propriété etat_mission
+        if (typeof etatMissionData === 'object' && etatMissionData.etat_mission) {
+            const colorClass = etatMissions[stateIdNum]?.color || "bg-gray-100 text-gray-800";
+            return {
+                label: etatMissionData.etat_mission,
+                color: colorClass
+            };
+        }
+        // Si c'est une chaîne directe (fallback)
+        if (typeof etatMissionData === 'string') {
+            const colorClass = etatMissions[stateIdNum]?.color || "bg-gray-100 text-gray-800";
+            return {
+                label: etatMissionData,
+                color: colorClass
+            };
+        }
+    }
+
+    // Sinon, utiliser le state_id pour récupérer depuis la liste statique
+    const etat = etatMissions[stateIdNum] || etatMissions[1];
+    return {
+        label: etat.etat_mission,
+        color: etat.color
+    };
+};
+
 // Composant pour un post individuel
 const Post = ({ post, saved, toggleSaved }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -420,9 +465,17 @@ const Post = ({ post, saved, toggleSaved }) => {
                     <h3 className="text-sm font-medium text-gray-900">{post?.user?.nom} {post?.user?.prenom}</h3>
                     <p className="text-xs text-gray-500">{formatDate(post.created_at)}</p>
                 </div>
-                <button className="text-gray-500">
-                    <MoreHorizontal className="w-4 h-4" />
-                </button>
+                {/* Badge d'état de la mission */}
+                {(() => {
+                    // Laravel retourne la relation comme etat_mission (snake_case du nom de la relation)
+                    const etatData = post?.etat_mission || post?.etatMission || null;
+                    const etat = getEtatMission(post?.state_id, etatData);
+                    return (
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${etat.color}`}>
+                            {etat.label}
+                        </span>
+                    );
+                })()}
             </div>
 
             {/* Post Title */}

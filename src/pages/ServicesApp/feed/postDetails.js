@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Share2, BookmarkIcon, ArrowLeft, Send, MessageCircle, MessageSquare, User, Star, ExternalLink, X, Linkedin, Facebook, Instagram, Mail } from 'lucide-react';
+import { Share2, BookmarkIcon, ArrowLeft, Send, MessageCircle, MessageSquare, User, Star, ExternalLink, X, Linkedin, Facebook, Instagram, Mail, CheckCircle2 } from 'lucide-react';
 import AuthUser from '../../../modules/AuthUser';
 import { urlApi, urlPublicAPi, urlServerImage } from '../../../modules/urlApp';
 import TopBar from '../../../modules/Components/topBar';
@@ -96,27 +96,69 @@ const Rating = ({ value = 0, size = 'md' }) => {
     );
 };
 
-const ApplicantCard = ({ applicant, onContact, onViewProfile }) => {
+const ApplicantCard = ({ applicant, onContact, onViewProfile, onChoose, isChosen, updating }) => {
     const u = applicant.user || {};
-    const photoUrl = u.photo?.startsWith('http')
-        ? u.photo
-        : u.photo
-            ? `${urlServerImage}/${u.photo}`
-            : '/api/placeholder/64/64';
+
+    // Construire l'URL de la photo du prestataire
+    let photoUrl = '/api/placeholder/64/64';
+    const photoSource = u.photo || u.avatar;
+    if (photoSource) {
+        if (photoSource.startsWith('http')) {
+            photoUrl = photoSource;
+        } else {
+            photoUrl = `${urlServerImage}/${photoSource}`;
+        }
+    }
+
+    console.log("👤 ApplicantCard - user:", u);
+    console.log("🖼️ ApplicantCard - photoSource:", photoSource);
+    console.log("🖼️ ApplicantCard - photoUrl:", photoUrl);
+
+    // Style de la carte selon si le prestataire est choisi
+    const cardClassName = isChosen
+        ? "flex items-start p-3 bg-white rounded-lg border-2 border-green-500 bg-green-50"
+        : "flex items-start p-3 bg-white rounded-lg border border-gray-200";
+
     return (
-        <div className="flex items-start p-3 bg-white rounded-lg border border-gray-200">
-            <img src={photoUrl} alt={u.nom || 'user'} className="w-12 h-12 rounded-full object-cover" />
+        <div className={cardClassName}>
+            {console.log("🖼️ Rendu ApplicantCard photo - photoUrl:", photoUrl)}
+            <img src={photoUrl} alt={u.nom || 'user'} className="w-12 h-12 rounded-full object-cover" onError={(e) => {
+                console.error("❌ Erreur de chargement photo candidat:", photoUrl);
+                e.target.src = '/api/placeholder/64/64';
+            }} />
             <div className="ml-3 flex-1">
                 <div className="flex justify-between items-start">
-                    <div>
-                        <h4 className="text-sm font-semibold">{[u.nom, u.prenom].filter(Boolean).join(' ') || 'Utilisateur'}</h4>
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-semibold">{[u.nom, u.prenom].filter(Boolean).join(' ') || 'Utilisateur'}</h4>
+                            {isChosen && (
+                                <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                            )}
+                        </div>
                         <p className="text-xs text-gray-500 mt-0.5">{u.qualification || 'Qualification non renseignée'}</p>
+                        {isChosen && (
+                            <p className="text-xs text-green-600 font-medium mt-1">Prestataire sélectionné</p>
+                        )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
                         <div className="flex items-center gap-2">
-                            <button onClick={onContact} className="px-2 py-1 text-xs rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center gap-1">
-                                <MessageCircle className="w-3 h-3" /> Contacter
-                            </button>
+                            {!isChosen ? (
+                                <button
+                                    onClick={onChoose}
+                                    disabled={updating}
+                                    className="px-2 py-1 text-xs rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <MessageCircle className="w-3 h-3" /> Choisir
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={onChoose}
+                                    disabled={updating}
+                                    className="px-2 py-1 text-xs rounded-md bg-red-50 text-red-600 hover:bg-red-100 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <X className="w-3 h-3" /> Désélectionner
+                                </button>
+                            )}
                             <button onClick={onViewProfile} className="px-2 py-1 text-xs rounded-md bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center gap-1">
                                 <User className="w-3 h-3" /> Profil
                             </button>
@@ -138,6 +180,51 @@ const formatDate = (dateString) => {
     return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+// Liste des états de mission avec leurs couleurs
+const etatMissions = {
+    1: { etat_mission: "Publié", color: "bg-blue-100 text-blue-800" },
+    2: { etat_mission: "Prestataire sur site", color: "bg-cyan-100 text-cyan-800" },
+    3: { etat_mission: "En cours", color: "bg-yellow-100 text-yellow-800" },
+    4: { etat_mission: "Achevé", color: "bg-green-100 text-green-800" },
+    5: { etat_mission: "Soldé", color: "bg-purple-100 text-purple-800" },
+    6: { etat_mission: "Terminé", color: "bg-emerald-100 text-emerald-800" },
+    7: { etat_mission: "Annulé", color: "bg-red-100 text-red-800" }
+};
+
+// Fonction pour obtenir les informations de l'état de la mission
+const getEtatMission = (stateId, etatMissionData = null) => {
+    // Déterminer le state_id réel (peut venir du post ou de la relation)
+    let stateIdNum = typeof stateId === 'string' ? parseInt(stateId) : (stateId || 1);
+
+    // Si les données de l'état sont fournies directement (depuis l'API Laravel)
+    // Laravel retourne la relation comme un objet avec les propriétés
+    if (etatMissionData) {
+        // Si c'est un objet avec la propriété etat_mission
+        if (typeof etatMissionData === 'object' && etatMissionData.etat_mission) {
+            const colorClass = etatMissions[stateIdNum]?.color || "bg-gray-100 text-gray-800";
+            return {
+                label: etatMissionData.etat_mission,
+                color: colorClass
+            };
+        }
+        // Si c'est une chaîne directe (fallback)
+        if (typeof etatMissionData === 'string') {
+            const colorClass = etatMissions[stateIdNum]?.color || "bg-gray-100 text-gray-800";
+            return {
+                label: etatMissionData,
+                color: colorClass
+            };
+        }
+    }
+
+    // Sinon, utiliser le state_id pour récupérer depuis la liste statique
+    const etat = etatMissions[stateIdNum] || etatMissions[1];
+    return {
+        label: etat.etat_mission,
+        color: etat.color
+    };
+};
+
 export default function PostDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -150,11 +237,17 @@ export default function PostDetails() {
     const [applicants, setApplicants] = useState([]);
     const [applyOpen, setApplyOpen] = useState(false);
     const [applyText, setApplyText] = useState('');
-    const [service_info, setservice_info] = useState([]);
+    const [service_info, setservice_info] = useState({});
     const [submitting, setSubmitting] = useState(false);
+    const [updatingChoice, setUpdatingChoice] = useState(null);
 
     const fetchAllservice_info = () => {
         http.get(`${urlApi}/service/info/${id}`).then(res => {
+            console.log("📦 Données service_info reçues:", res.data);
+            console.log("🖼️ Image service_info:", res.data?.image);
+            console.log("👤 Avatar user service_info:", res.data?.user?.avatar);
+            console.log("🔗 urlServerImage:", urlServerImage);
+            console.log("🔗 urlPublicAPi:", urlPublicAPi);
             setservice_info(res.data);
         }).catch(err => {
             console.error("Erreur lors du chargement des informations du service:", err);
@@ -177,20 +270,28 @@ export default function PostDetails() {
                     // Prendre les informations renvoyées par l'API backend (clé "prestataire")
                     const userInfo = a.prestataire || a.user || {};
 
+                    console.log("👤 Candidat brut (a):", a);
+                    console.log("👤 userInfo:", userInfo);
+                    console.log("🖼️ userInfo.avatar:", userInfo.avatar);
+                    console.log("🖼️ userInfo.photo:", userInfo.photo);
+
                     return {
                         id: a.id,
                         message: a.commentaire_prestataire || a.message || a.commentaire || '',
+                        choise: a.choise || a.choice || 0, // Récupérer le champ choise
                         user: {
                             id: a.id_prestataire || a.user_id || a.prestataire_id || userInfo.id,
                             nom: userInfo.nom || 'Nom',
                             prenom: userInfo.prenom || 'Prénom',
                             qualification: userInfo.qualification || 'Non renseignée',
                             note: (typeof userInfo.note_user !== 'undefined' ? Number(userInfo.note_user) : (typeof a.note !== 'undefined' ? Number(a.note) : 0)) || 0,
-                            photo: userInfo.avatar || userInfo.photo || '/api/placeholder/64/64',
+                            photo: userInfo.avatar || userInfo.photo || null, // Ne pas mettre de placeholder ici, on le gère dans le composant
+                            avatar: userInfo.avatar || userInfo.photo || null, // Ajouter aussi avatar pour compatibilité
                         },
                     };
                 }));
 
+                console.log("✅ Applicants mappés:", apps);
                 setApplicants(apps);
             } else {
                 // Si aucune candidature réelle, utiliser les données mockées uniquement en développement
@@ -202,76 +303,194 @@ export default function PostDetails() {
         }
     }
 
+    const updateChoice = async (candidateId, currentChoice) => {
+        // Déterminer la nouvelle valeur : si choise === 1, on passe à 0, sinon à 1
+        const newChoice = currentChoice === 1 ? 0 : 1;
+
+        setUpdatingChoice(candidateId);
+        try {
+            await http.put(`${urlApi}/service/candidature/update/${candidateId}`, {
+                choise: newChoice
+            });
+
+            // Mettre à jour l'état local
+            setApplicants(prevApplicants =>
+                prevApplicants.map(applicant =>
+                    applicant.id === candidateId
+                        ? { ...applicant, choise: newChoice }
+                        : applicant
+                )
+            );
+
+            toast.success(
+                newChoice === 1
+                    ? "Prestataire sélectionné avec succès !"
+                    : "Prestataire désélectionné avec succès !",
+                newChoice === 1 ? "Sélection réussie" : "Désélection réussie"
+            );
+        } catch (error) {
+            console.error("Erreur lors de la mise à jour du choix:", error);
+            let errorMessage = "Une erreur s'est produite lors de la mise à jour.";
+            if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            }
+            toast.error(errorMessage, "Erreur");
+        } finally {
+            setUpdatingChoice(null);
+        }
+    };
+
     useEffect(() => {
         fetchAllservice_info();
         fetchAllCandidates();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
-    const getMockPost = (mockId) => ({
-        id: service_info.id,
-        titre: service_info.titre,
-        details: service_info.details,
-        image: `${urlPublicAPi}/${service_info.image}`,
-        created_at: service_info?.created_at,
-        author: `${service_info?.user?.nom} ${service_info?.user?.prenom}`,
-        profilePic: `${urlServerImage}/${service_info?.user?.avatar}`,
-        category: "/électricité",
-        // Champs supplémentaires issus de la création d'offre
-        ville: service_info?.ville,
-        quartier: service_info?.quartier,
-        precision: service_info?.description_position,
-        pays: service_info?.pays,
-        region: "Littoral",
-        montant: service_info.montant,
-        deviseMonnaie: service_info.devise,
-        typeDuree: service_info?.type_duree_postservice,
-        dureeMois: 2,
-        dureeUnite: service_info?.type_duree_postservice,
-        metierSelectionnes: ["Électricien", "Technicien courant faible", "Installateur panneaux solaires"],
-        nbPrestataires: service_info?.nombre_prestataire,
-        typeDemandeur: "personne",
-        lien: service_info.lienhttp,
-        coordonnees: { lat: 4.081, lng: 9.767 },
-    });
+    const getMockPost = (mockId) => {
+        console.log("🔄 getMockPost appelé avec service_info:", service_info);
+
+        // Construire l'URL de l'image
+        let imageUrl = null;
+        if (service_info.image) {
+            if (service_info.image.startsWith('http')) {
+                imageUrl = service_info.image;
+            } else {
+                imageUrl = `${urlPublicAPi}/${service_info.image}`;
+            }
+        }
+        console.log("🖼️ Mock image URL:", imageUrl);
+
+        // Construire l'URL de la photo de profil
+        let profilePicUrl = '/api/placeholder/40/40';
+        if (service_info?.user?.avatar) {
+            if (service_info.user.avatar.startsWith('http')) {
+                profilePicUrl = service_info.user.avatar;
+            } else {
+                profilePicUrl = `${urlServerImage}/${service_info.user.avatar}`;
+            }
+        }
+        console.log("👤 Mock profilePic URL:", profilePicUrl);
+
+        return {
+            id: service_info.id,
+            titre: service_info.titre,
+            details: service_info.details,
+            image: imageUrl,
+            created_at: service_info?.created_at,
+            author: `${service_info?.user?.nom || ''} ${service_info?.user?.prenom || ''}`.trim() || 'Auteur',
+            profilePic: profilePicUrl,
+            category: "/électricité",
+            // Champs supplémentaires issus de la création d'offre
+            ville: service_info?.ville,
+            quartier: service_info?.quartier,
+            precision: service_info?.description_position,
+            pays: service_info?.pays,
+            region: "Littoral",
+            montant: service_info.montant,
+            deviseMonnaie: service_info.devise,
+            typeDuree: service_info?.type_duree_postservice,
+            dureeMois: 2,
+            dureeUnite: service_info?.type_duree_postservice,
+            metierSelectionnes: ["Électricien", "Technicien courant faible", "Installateur panneaux solaires"],
+            nbPrestataires: service_info?.nombre_prestataire,
+            typeDemandeur: "personne",
+            lien: service_info.lienhttp,
+            coordonnees: { lat: 4.081, lng: 9.767 },
+        };
+    };
 
 
     useEffect(() => {
         let mounted = true;
         const load = async () => {
             try {
-                const postRes = await http.get(`${urlApi}/service/${id}`).catch(() => ({ data: {} }));
+                // Utiliser la même route que fetchAllservice_info pour éviter les appels redondants
+                const postRes = await http.get(`${urlApi}/service/info/${id}`).catch(() => ({ data: {} }));
                 if (!mounted) return;
                 const p = postRes.data || {};
+
+                console.log("📦 Données post reçues (p):", p);
+                console.log("🖼️ p.image:", p.image);
+                console.log("👤 p.user:", p.user);
+                console.log("👤 p.user?.avatar:", p.user?.avatar);
+
+                // Construire l'URL de l'image du post
+                let imageUrl = null;
+                if (p.image) {
+                    if (p.image.startsWith('http')) {
+                        imageUrl = p.image;
+                    } else {
+                        imageUrl = `${urlPublicAPi}/${p.image}`;
+                    }
+                } else if (p.photo) {
+                    if (p.photo.startsWith('http')) {
+                        imageUrl = p.photo;
+                    } else {
+                        imageUrl = `${urlPublicAPi}/${p.photo}`;
+                    }
+                }
+                console.log("🖼️ Image URL finale:", imageUrl);
+
+                // Construire l'URL de la photo de profil
+                let profilePicUrl = '/api/placeholder/40/40';
+                if (p.user?.avatar) {
+                    if (p.user.avatar.startsWith('http')) {
+                        profilePicUrl = p.user.avatar;
+                    } else {
+                        profilePicUrl = `${urlServerImage}/${p.user.avatar}`;
+                    }
+                } else if (p.author?.photo) {
+                    if (p.author.photo.startsWith('http')) {
+                        profilePicUrl = p.author.photo;
+                    } else {
+                        profilePicUrl = `${urlServerImage}/${p.author.photo}`;
+                    }
+                }
+                console.log("👤 ProfilePic URL finale:", profilePicUrl);
+
                 // mapping fallback to match feed fields
                 const mapped = {
                     id: p.id || id,
                     titre: p.titre || p.title || 'Titre du service',
                     details: p.details || p.description || '',
-                    image: p.image || p.photo || null,
+                    image: imageUrl,
                     created_at: p.created_at || p.date || new Date().toISOString(),
-                    author: (p.author && (p.author.nom || p.author.name)) || p.user_name || 'Auteur',
-                    profilePic: (p.author && p.author.photo) || p.profilePic || '/api/placeholder/40/40',
+                    author: (p.user && (p.user.nom || p.user.prenom) ? `${p.user.nom || ''} ${p.user.prenom || ''}`.trim() : null) || (p.author && (p.author.nom || p.author.name)) || p.user_name || 'Auteur',
+                    profilePic: profilePicUrl,
                     category: p.category || p.categorie || undefined,
                     ville: p.ville,
                     quartier: p.quartier,
-                    precision: p.precision,
+                    precision: p.precision || p.description_position,
                     pays: p.pays,
                     region: p.region,
                     montant: p.montant,
-                    deviseMonnaie: p.deviseMonnaie,
+                    deviseMonnaie: p.deviseMonnaie || p.devise,
                     typeDuree: p.typeDuree,
                     dureeMois: p.dureeMois,
                     dureeUnite: p.dureeUnite,
                     metierSelectionnes: p.metierSelectionnes || [],
-                    nbPrestataires: p.nbPrestataires,
+                    nbPrestataires: p.nbPrestataires || p.nombre_prestataire,
                     typeDemandeur: p.typeDemandeur,
-                    lien: p.lien,
+                    lien: p.lien || p.lienhttp,
                     modeMission: p.modeMission || p.mode_mission || p.type_mission || undefined,
+                    state_id: p.state_id,
                 };
+                console.log("📝 Post mappé:", mapped);
+
                 const hasRealPost = !!(p && (p.titre || p.title || p.description || p.details));
                 // Si les données réelles ne sont pas disponibles, utiliser service_info comme fallback
                 const finalPost = hasRealPost ? mapped : (service_info && service_info.id ? getMockPost(id) : mapped);
+                console.log("✅ Post final:", finalPost);
                 setPost(finalPost);
+
+                // Mettre à jour service_info avec les données du post si disponible
+                if (hasRealPost && p) {
+                    setservice_info(prev => ({
+                        ...prev,
+                        ...p,
+                        state_id: p.state_id || prev.state_id,
+                        etat_mission: p.etat_mission || p.etatMission || prev.etat_mission
+                    }));
+                }
             } finally {
                 if (mounted) setLoading(false);
             }
@@ -419,11 +638,28 @@ export default function PostDetails() {
                 <div className="max-w-2xl mx-auto w-full">
                     {/* En-tête auteur */}
                     <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
-                        <img src={post.profilePic} alt={post.author} className="w-10 h-10 rounded-full object-cover mr-3" />
+                        {console.log("👤 Rendu profilePic - post.profilePic:", post.profilePic)}
+                        <img src={post.profilePic} alt={post.author} className="w-10 h-10 rounded-full object-cover mr-3" onError={(e) => {
+                            console.error("❌ Erreur de chargement profilePic:", post.profilePic);
+                            e.target.src = '/api/placeholder/40/40';
+                        }} />
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-gray-900">{post.author}</h3>
                             <p className="text-xs text-gray-500">{formatDate(post.created_at)}</p>
                         </div>
+                        {/* Badge d'état de la mission */}
+                        {(() => {
+                            // Utiliser service_info ou les données du post pour l'état
+                            const stateId = service_info?.state_id || post?.state_id;
+                            // Laravel retourne la relation comme etat_mission (snake_case du nom de la relation)
+                            const etatData = service_info?.etat_mission || service_info?.etatMission || null;
+                            const etat = getEtatMission(stateId, etatData);
+                            return (
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${etat.color}`}>
+                                    {etat.label}
+                                </span>
+                            );
+                        })()}
                     </div>
 
                     {/* Titre */}
@@ -440,7 +676,11 @@ export default function PostDetails() {
                     {post.image && (
                         <div className="bg-white mt-3">
                             <div className="relative">
-                                <img src={`${post.image}`} alt={post.titre} className="w-full h-auto object-cover" />
+                                {console.log("🖼️ Rendu image post - post.image:", post.image)}
+                                <img src={post.image} alt={post.titre} className="w-full h-auto object-cover" onError={(e) => {
+                                    console.error("❌ Erreur de chargement image:", post.image);
+                                    e.target.style.display = 'none';
+                                }} />
 
                             </div>
                         </div>
@@ -628,6 +868,9 @@ export default function PostDetails() {
                                     applicant={a}
                                     onContact={() => navigate(`/Services profile?user=${a.user?.id || ''}`)}
                                     onViewProfile={() => navigate(`/Services profile?user=${a.user?.id || ''}`)}
+                                    onChoose={() => updateChoice(a.id, a.choise || 0)}
+                                    isChosen={(a.choise || 0) === 1}
+                                    updating={updatingChoice === a.id}
                                 />
                             ))}
                         </div>

@@ -16,7 +16,8 @@ import {
     ExternalLink,
     Monitor,
     Briefcase,
-    AlertCircle
+    AlertCircle,
+    FileText
 } from "lucide-react";
 import { useNavigate } from 'react-router';
 import axios from "axios";
@@ -78,10 +79,11 @@ export default function AddPostService() {
         image: null,
         imagePreview: null,
         locationType: "auto", // 'auto' ou 'manual'
-        ville: "En ligne",
-        quartier: "En ligne",
+        ville: "",
+        quartier: "",
         precision: "",
-        coordonnees: { lat: 0, lng: 0 },
+        latitude: 0,
+        longitude: 0,
         pays: "Cameroun", // Défini par défaut
         region: "Cameroun", // Défini par défaut
         montant: "",
@@ -186,10 +188,8 @@ export default function AddPostService() {
                         ville: prev.ville || geo.city || prev.ville,
                         pays: prev.pays || geo.country || prev.pays,
                         region: prev.region || geo.region || prev.region,
-                        coordonnees: {
-                            lat: geo.latitude != null ? Number(geo.latitude) : prev.coordonnees.lat,
-                            lng: geo.longitude != null ? Number(geo.longitude) : prev.coordonnees.lng
-                        },
+                        latitude: geo.latitude != null ? Number(geo.latitude) : prev.latitude,
+                        longitude: geo.longitude != null ? Number(geo.longitude) : prev.longitude,
                         // On bascule en manuel si on a déjà des infos IP pour éviter la demande navigateur
                         locationType: prev.locationType === 'auto' ? 'manual' : prev.locationType
                     };
@@ -198,8 +198,8 @@ export default function AddPostService() {
                         next.pays !== prev.pays ||
                         next.region !== prev.region ||
                         next.locationType !== prev.locationType ||
-                        next.coordonnees.lat !== prev.coordonnees.lat ||
-                        next.coordonnees.lng !== prev.coordonnees.lng;
+                        next.latitude !== prev.latitude ||
+                        next.longitude !== prev.longitude;
                     if (!changed) {
                         console.log('[AddPost] Geo prefill unchanged, skip setState');
                         return prev;
@@ -234,7 +234,8 @@ export default function AddPostService() {
 
                                 setFormData(prev => ({
                                     ...prev,
-                                    coordonnees: { lat: Number(latitude), lng: Number(longitude) },
+                                    latitude: Number(latitude),
+                                    longitude: Number(longitude),
                                     ville: address.city || address.town || address.village || address.municipality || "Ville non détectée",
                                     quartier: address.suburb || address.quarter || address.neighbourhood || address.district || "Quartier non détecté",
                                     pays: "Cameroun", // Toujours Cameroun
@@ -249,7 +250,8 @@ export default function AddPostService() {
                                 // Fallback si l'API échoue
                                 setFormData(prev => ({
                                     ...prev,
-                                    coordonnees: { lat: Number(latitude), lng: Number(longitude) },
+                                    latitude: Number(latitude),
+                                    longitude: Number(longitude),
                                     ville: "Position détectée",
                                     quartier: "Coordonnées: " + formatCoord(latitude) + ", " + formatCoord(longitude),
                                     pays: "Cameroun",
@@ -261,10 +263,8 @@ export default function AddPostService() {
                             // Fallback en cas d'erreur
                             setFormData(prev => ({
                                 ...prev,
-                                coordonnees: {
-                                    lat: Number(position.coords.latitude),
-                                    lng: Number(position.coords.longitude)
-                                },
+                                latitude: Number(position.coords.latitude),
+                                longitude: Number(position.coords.longitude),
                                 ville: "Position détectée",
                                 quartier: "Coordonnées: " + formatCoord(position.coords.latitude) + ", " + formatCoord(position.coords.longitude),
                                 pays: "Cameroun",
@@ -339,6 +339,36 @@ export default function AddPostService() {
     };
 
     const handleSubmit = async () => {
+        // Validation des champs obligatoires
+        const errors = [];
+
+        if (!formData.titre || formData.titre.trim() === "") {
+            errors.push("Le titre de l'offre est obligatoire");
+        }
+
+        if (!formData.details || formData.details.trim() === "") {
+            errors.push("Les détails de l'offre sont obligatoires");
+        }
+
+        // Validation pour la localisation si ce n'est pas en ligne
+        if (formData.modeMission !== 1) {
+            if (!formData.ville || formData.ville.trim() === "" || formData.ville === "En ligne") {
+                errors.push("La ville est obligatoire pour une prestation sur site");
+            }
+            if (!formData.quartier || formData.quartier.trim() === "" || formData.quartier === "En ligne") {
+                errors.push("Le quartier est obligatoire pour une prestation sur site");
+            }
+        }
+
+        if (errors.length > 0) {
+            toast.error(
+                errors.join(". "),
+                "Champs obligatoires manquants"
+            );
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -354,7 +384,9 @@ export default function AddPostService() {
             formDataToSend.append('precision', formData.precision || '');
             formDataToSend.append('pays', formData.pays || '');
             formDataToSend.append('region', formData.region || '');
-            formDataToSend.append('montant', formData.montant || '');
+            // Montant : 0 si vide ou non renseigné
+            const montantValue = formData.montant && formData.montant !== "" ? formData.montant : "0";
+            formDataToSend.append('montant', montantValue);
             formDataToSend.append('deviseMonnaie', formData.deviseMonnaie);
             formDataToSend.append('typeDuree', formData.typeDuree);
             formDataToSend.append('nbPrestataires', formData.nbPrestataires);
@@ -363,9 +395,9 @@ export default function AddPostService() {
             formDataToSend.append('typeDemandeur', formData.typeDemandeur);
             formDataToSend.append('userid', user.id);
             // Ajouter les coordonnées GPS si disponibles
-            if (formData.coordonnees.lat && formData.coordonnees.lng) {
-                formDataToSend.append('latitude', formData.coordonnees.lat);
-                formDataToSend.append('longitude', formData.coordonnees.lng);
+            if (formData.latitude && formData.longitude) {
+                formDataToSend.append('latitude', formData.latitude);
+                formDataToSend.append('longitude', formData.longitude);
             }
 
             // Ajouter les métiers sélectionnés
@@ -698,7 +730,7 @@ export default function AddPostService() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium mb-1">Type de durée (facultatif)</label>
+                            <label className="block text-sm font-medium mb-1">Type de mission</label>
                             <div className="grid grid-cols-3 gap-2">
                                 <button
                                     type="button"
@@ -720,7 +752,7 @@ export default function AddPostService() {
                                         }`}
                                 >
                                     <Clock size={20} className="mb-1" />
-                                    <span className="text-xs">Déterminée</span>
+                                    <span className="text-xs">longue durée</span>
                                 </button>
                                 <button
                                     type="button"
@@ -730,8 +762,8 @@ export default function AddPostService() {
                                         : "bg-white"
                                         }`}
                                 >
-                                    <Clock size={20} className="mb-1" />
-                                    <span className="text-xs">Indéterminée</span>
+                                    <FileText size={20} className="mb-1" />
+                                    <span className="text-xs">Offre d'emploi</span>
                                 </button>
                             </div>
                         </div>
@@ -848,12 +880,16 @@ export default function AddPostService() {
                     <div className="space-y-4">
                         <h2 className="text-xl font-semibold mb-4">Localisation</h2>
                         <div className="space-y-4">
-                            {formData.modeMission === 1 ? (
-                                <div className="bg-gray-50 p-4 rounded-lg border">
-                                    <p className="text-sm text-gray-700">Prestation en ligne sélectionnée. Aucune localisation n'est requise.</p>
+                            {formData.modeMission === 1 && (
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                    <p className="text-sm text-blue-700">
+                                        <strong>Prestation en ligne sélectionnée.</strong> La localisation est facultative mais peut être utile pour les prestataires.
+                                    </p>
                                 </div>
-                            ) : (
-                                <div>
+                            )}
+
+                            <div>
+                                {formData.modeMission !== 1 && (
                                     <div className="mb-4">
                                         <label className="block text-sm font-medium mb-3">Type de position</label>
                                         <div className="flex items-center space-x-4">
@@ -887,170 +923,174 @@ export default function AddPostService() {
                                             </div>
                                         </div>
                                     </div>
+                                )}
 
-                                    {formData.locationType === "auto" ? (
-                                        <div className="space-y-4">
-                                            <div className="bg-gray-50 p-4 rounded-lg border">
-                                                <div className="flex items-center gap-2 mb-3">
-                                                    <MapPin size={16} className="text-blue-500" />
-                                                    <span className="font-medium">Position détectée automatiquement</span>
-                                                </div>
-                                                <div className="space-y-3">
-                                                    <div>
-                                                        <label className="block text-xs text-gray-500 mb-1">Ville</label>
-                                                        <p className="font-medium text-sm">{formData.ville || "En attente..."}</p>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs text-gray-500 mb-1">Quartier</label>
-                                                        <p className="font-medium text-sm">{formData.quartier || "En attente..."}</p>
-                                                    </div>
-                                                    {Number.isFinite(Number(formData.coordonnees.lat)) && Number.isFinite(Number(formData.coordonnees.lng)) && (
-                                                        <div>
-                                                            <label className="block text-xs text-gray-500 mb-1">Coordonnées GPS</label>
-                                                            <p className="font-mono text-xs text-gray-600">
-                                                                {formatCoord(formData.coordonnees.lat, 6)}, {formatCoord(formData.coordonnees.lng, 6)}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                {formData.modeMission !== 1 && formData.locationType === "auto" ? (
+                                    <div className="space-y-4">
+                                        <div className="bg-gray-50 p-4 rounded-lg border">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <MapPin size={16} className="text-blue-500" />
+                                                <span className="font-medium">Position détectée automatiquement</span>
                                             </div>
-
-                                            <div>
-                                                <label className="block text-sm font-medium mb-2">
-                                                    Plus de précisions sur l'emplacement *
-                                                </label>
-                                                <textarea
-                                                    name="precision"
-                                                    value={formData.precision}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    placeholder="Ajoutez des détails spécifiques sur l'emplacement exact (adresse complète, points de repère, instructions d'accès...)"
-                                                    rows={4}
-                                                    required
-                                                />
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                    Cette information sera visible par les prestataires pour mieux localiser votre besoin
-                                                </p>
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Ville *</label>
+                                                    <p className="font-medium text-sm">{formData.ville || "En attente..."}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-500 mb-1">Quartier *</label>
+                                                    <p className="font-medium text-sm">{formData.quartier || "En attente..."}</p>
+                                                </div>
+                                                {Number.isFinite(Number(formData.latitude)) && Number.isFinite(Number(formData.longitude)) && (
+                                                    <div>
+                                                        <label className="block text-xs text-gray-500 mb-1">Coordonnées GPS</label>
+                                                        <p className="font-mono text-xs text-gray-600">
+                                                            {formatCoord(formData.latitude, 6)}, {formatCoord(formData.longitude, 6)}
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-                                    ) : (
-                                        <div className="space-y-4 mt-4">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-2">Ville *</label>
-                                                <div className="relative">
-                                                    <input
-                                                        type="text"
-                                                        value={selectedVille || searchVille}
-                                                        onChange={(e) => {
-                                                            const value = e.target.value;
-                                                            setSearchVille(value);
-                                                            setSelectedVille("");
-                                                            setShowVilleDropdown(true);
 
-                                                            // Si la ville correspond exactement à une ville de la liste
-                                                            const exactMatch = villesCameroun.find(ville =>
-                                                                ville.toLowerCase() === value.toLowerCase()
-                                                            );
-                                                            if (exactMatch) {
-                                                                setFormData({ ...formData, ville: exactMatch });
-                                                            } else {
-                                                                setFormData({ ...formData, ville: value });
-                                                            }
-                                                        }}
-                                                        onFocus={() => setShowVilleDropdown(true)}
-                                                        onBlur={() => {
-                                                            // Délai pour permettre le clic sur une option
-                                                            setTimeout(() => setShowVilleDropdown(false), 200);
-                                                        }}
-                                                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                        placeholder="Tapez le nom de votre ville..."
-                                                        required
-                                                        autoComplete="off"
-                                                    />
-
-                                                    {/* Icône de recherche */}
-                                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                                        </svg>
-                                                    </div>
-
-                                                    {/* Dropdown des villes */}
-                                                    {showVilleDropdown && searchVille && filteredVilles.length > 0 && (
-                                                        <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-white border rounded-lg shadow-lg border-gray-200">
-                                                            {filteredVilles.slice(0, 10).map((ville) => (
-                                                                <div
-                                                                    key={ville}
-                                                                    onClick={() => {
-                                                                        setSelectedVille(ville);
-                                                                        setSearchVille("");
-                                                                        setShowVilleDropdown(false);
-                                                                        setFormData({ ...formData, ville: ville });
-                                                                    }}
-                                                                    className={`p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 ${selectedVille === ville ? 'bg-blue-100' : ''
-                                                                        }`}
-                                                                >
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className="text-sm font-medium text-gray-900">{ville}</span>
-                                                                        {searchVille.toLowerCase() === ville.toLowerCase() && (
-                                                                            <span className="text-xs text-green-600 font-medium">✓</span>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-
-                                                            {filteredVilles.length > 10 && (
-                                                                <div className="p-2 text-xs text-gray-500 text-center border-t border-gray-100">
-                                                                    {filteredVilles.length - 10} autres villes disponibles...
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Message si aucune ville trouvée */}
-                                                    {showVilleDropdown && searchVille && filteredVilles.length === 0 && (
-                                                        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg border-gray-200">
-                                                            <div className="p-3 text-sm text-gray-500 text-center">
-                                                                Aucune ville trouvée pour "{searchVille}"
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                    Commencez à taper le nom de votre ville pour la trouver rapidement
-                                                </p>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1">Quartier *</label>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">
+                                                Plus de précisions sur l'emplacement (facultatif)
+                                            </label>
+                                            <textarea
+                                                name="precision"
+                                                value={formData.precision}
+                                                onChange={handleInputChange}
+                                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="Ajoutez des détails spécifiques sur l'emplacement exact (adresse complète, points de repère, instructions d'accès...)"
+                                                rows={4}
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                Cette information sera visible par les prestataires pour mieux localiser votre besoin
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4 mt-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">
+                                                Ville {formData.modeMission !== 1 ? "*" : "(facultatif)"}
+                                            </label>
+                                            <div className="relative">
                                                 <input
                                                     type="text"
-                                                    name="quartier"
-                                                    value={formData.quartier}
-                                                    onChange={handleInputChange}
+                                                    value={selectedVille || searchVille}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        setSearchVille(value);
+                                                        setSelectedVille("");
+                                                        setShowVilleDropdown(true);
+
+                                                        // Si la ville correspond exactement à une ville de la liste
+                                                        const exactMatch = villesCameroun.find(ville =>
+                                                            ville.toLowerCase() === value.toLowerCase()
+                                                        );
+                                                        if (exactMatch) {
+                                                            setFormData({ ...formData, ville: exactMatch });
+                                                        } else {
+                                                            setFormData({ ...formData, ville: value });
+                                                        }
+                                                    }}
+                                                    onFocus={() => setShowVilleDropdown(true)}
+                                                    onBlur={() => {
+                                                        // Délai pour permettre le clic sur une option
+                                                        setTimeout(() => setShowVilleDropdown(false), 200);
+                                                    }}
                                                     className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    placeholder="Ex: Bonamoussadi"
-                                                    required
+                                                    placeholder="Tapez le nom de votre ville..."
+                                                    required={formData.modeMission !== 1}
+                                                    autoComplete="off"
                                                 />
+
+                                                {/* Icône de recherche */}
+                                                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                    </svg>
+                                                </div>
+
+                                                {/* Dropdown des villes */}
+                                                {showVilleDropdown && searchVille && filteredVilles.length > 0 && (
+                                                    <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-white border rounded-lg shadow-lg border-gray-200">
+                                                        {filteredVilles.slice(0, 10).map((ville) => (
+                                                            <div
+                                                                key={ville}
+                                                                onClick={() => {
+                                                                    setSelectedVille(ville);
+                                                                    setSearchVille("");
+                                                                    setShowVilleDropdown(false);
+                                                                    setFormData({ ...formData, ville: ville });
+                                                                }}
+                                                                className={`p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 ${selectedVille === ville ? 'bg-blue-100' : ''
+                                                                    }`}
+                                                            >
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-sm font-medium text-gray-900">{ville}</span>
+                                                                    {searchVille.toLowerCase() === ville.toLowerCase() && (
+                                                                        <span className="text-xs text-green-600 font-medium">✓</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+
+                                                        {filteredVilles.length > 10 && (
+                                                            <div className="p-2 text-xs text-gray-500 text-center border-t border-gray-100">
+                                                                {filteredVilles.length - 10} autres villes disponibles...
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Message si aucune ville trouvée */}
+                                                {showVilleDropdown && searchVille && filteredVilles.length === 0 && (
+                                                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg border-gray-200">
+                                                        <div className="p-3 text-sm text-gray-500 text-center">
+                                                            Aucune ville trouvée pour "{searchVille}"
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1">Plus de précisions sur l'emplacement *</label>
-                                                <textarea
-                                                    name="precision"
-                                                    value={formData.precision}
-                                                    onChange={handleInputChange}
-                                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    placeholder="Ajoutez des détails spécifiques sur l'emplacement exact (adresse complète, points de repère, instructions d'accès...)"
-                                                    rows={4}
-                                                    required
-                                                />
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                    Cette information sera visible par les prestataires pour mieux localiser votre besoin
-                                                </p>
-                                            </div>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                {formData.modeMission === 1
+                                                    ? "Commencez à taper le nom de votre ville pour la trouver rapidement (facultatif)"
+                                                    : "Commencez à taper le nom de votre ville pour la trouver rapidement"}
+                                            </p>
                                         </div>
-                                    )}
-                                </div>
-                            )}
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">
+                                                Quartier {formData.modeMission !== 1 ? "*" : "(facultatif)"}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name="quartier"
+                                                value={formData.quartier}
+                                                onChange={handleInputChange}
+                                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="Ex: Bonamoussadi"
+                                                required={formData.modeMission !== 1}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Plus de précisions sur l'emplacement (facultatif)</label>
+                                            <textarea
+                                                name="precision"
+                                                value={formData.precision}
+                                                onChange={handleInputChange}
+                                                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="Ajoutez des détails spécifiques sur l'emplacement exact (adresse complète, points de repère, instructions d'accès...)"
+                                                rows={4}
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                Cette information sera visible par les prestataires pour mieux localiser votre besoin
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );
@@ -1096,11 +1136,11 @@ export default function AddPostService() {
                                                     <span className="font-medium">{formData.quartier}</span>
                                                 </div>
                                             )}
-                                            {Number.isFinite(Number(formData.coordonnees.lat)) && Number.isFinite(Number(formData.coordonnees.lng)) && (
+                                            {Number.isFinite(Number(formData.latitude)) && Number.isFinite(Number(formData.longitude)) && (
                                                 <div className="flex justify-between">
                                                     <span className="text-gray-600">GPS:</span>
                                                     <span className="font-mono text-xs text-gray-500">
-                                                        {formatCoord(formData.coordonnees.lat)}, {formatCoord(formData.coordonnees.lng)}
+                                                        {formatCoord(formData.latitude)}, {formatCoord(formData.longitude)}
                                                     </span>
                                                 </div>
                                             )}
@@ -1120,7 +1160,7 @@ export default function AddPostService() {
                             <div className="mb-4 grid grid-cols-2 gap-4">
                                 <div>
                                     <p className="font-medium">Budget:</p>
-                                    <p>{formData.montant ? `${formData.montant} ${formData.deviseMonnaie}` : "À négocier"}</p>
+                                    <p>{formData.montant && formData.montant !== "0" && formData.montant !== "" ? `${formData.montant} ${formData.deviseMonnaie}` : "À négocier"}</p>
                                 </div>
 
                                 <div>
@@ -1155,7 +1195,7 @@ export default function AddPostService() {
                                 <p>
                                     {formData.typeDuree === 1 ? 'Tâche ponctuelle' :
                                         formData.typeDuree === 2 ? `Durée déterminée (${formData.dureeMois} ${formData.dureeUnite})` :
-                                            'Durée indéterminée'}
+                                            'Offre d\'emploi'}
                                 </p>
                             </div>
 
