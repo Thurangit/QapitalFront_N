@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
     Camera,
     ChevronLeft,
@@ -17,7 +17,8 @@ import {
     Monitor,
     Briefcase,
     AlertCircle,
-    FileText
+    FileText,
+    Loader2
 } from "lucide-react";
 import { useNavigate } from 'react-router';
 import axios from "axios";

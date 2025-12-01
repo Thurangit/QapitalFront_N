@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Search, Plus, MessageCircle, Calendar, Share2, MoreHorizontal, Bell, User, Menu, Settings, Briefcase, ChevronRight, ChevronLeft, Newspaper, Contact, BriefcaseBusiness, MapPinIcon, BookmarkIcon, X, Linkedin, Facebook, Instagram, MessageSquare, Mail, ExternalLink } from 'lucide-react';
 import { StaticsImages } from '../../../modules/images';
 import ServicesProviders from '../providers';
@@ -6,6 +6,10 @@ import { NavigationBar } from '../../../modules/Components/bottomFloatting';
 import { useNavigate } from 'react-router';
 import { urlApi, urlPublicAPi, urlServerImage } from '../../../modules/urlApp';
 import AuthUser from '../../../modules/AuthUser';
+import { OptimizedImage } from '../../../components/OptimizedImage';
+import { PostListSkeleton } from '../../../components/SkeletonLoader';
+import { useDebounce } from '../../../hooks/useDebounce';
+import cacheManager from '../../../utils/cacheManager';
 
 
 const missions = [
@@ -396,8 +400,8 @@ const getEtatMission = (stateId, etatMissionData = null) => {
     };
 };
 
-// Composant pour un post individuel
-const Post = ({ post, saved, toggleSaved }) => {
+// Composant pour un post individuel - Optimisé avec React.memo
+const Post = React.memo(({ post, saved, toggleSaved }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const navigate = useNavigate();
@@ -455,11 +459,13 @@ const Post = ({ post, saved, toggleSaved }) => {
         <div className="bg-white border-b border-gray-200 pb-3">
             {/* Post Header */}
             <div className="flex items-center px-3 py-2">
-                <img
-
+                <OptimizedImage
                     src={`${urlServerImage}/${post?.user?.avatar}`}
-                    alt={""}
+                    alt={`${post?.user?.nom || ''} ${post?.user?.prenom || ''}`}
                     className="w-8 h-8 rounded-full mr-2 object-cover"
+                    placeholder="/api/placeholder/40/40"
+                    priority={false}
+                    showLoader={false}
                 />
                 <div className="flex-1">
                     <h3 className="text-sm font-medium text-gray-900">{post?.user?.nom} {post?.user?.prenom}</h3>
@@ -498,24 +504,23 @@ const Post = ({ post, saved, toggleSaved }) => {
                 </p>
             </div>
 
-            {/* Post Image - Conditional */}
+            {/* Post Image - Optimisée avec lazy loading */}
             {post.image && (
-                <div className="relative mb-3">
-                    <img
+                <div className="relative mb-3 cursor-pointer" onClick={() => detailPost(post.id)}>
+                    <OptimizedImage
                         src={`${urlPublicAPi}/${post.image}`}
                         alt={post.titre || "Image du post"}
                         className="w-full h-auto"
-                        onClick={() => detailPost(post.id)}
+                        placeholder="/api/placeholder/600/400"
                     />
 
                     {/* Floating consult button */}
                     <a
                         href={`/post/${post.id}`}
-                        className="absolute bottom-3 right-3 px-3 py-1 rounded-full flex items-center bg-blue-500 text-white bg-opacity-90 hover:bg-opacity-100 transition-all"
+                        className="absolute bottom-3 right-3 px-3 py-1 rounded-full flex items-center bg-blue-500 text-white bg-opacity-90 hover:bg-opacity-100 transition-all shadow-lg"
+                        onClick={(e) => e.stopPropagation()}
                     >
-
                         <span className="text-xs">Consulter l'offre</span>
-
                     </a>
                 </div>
             )}
@@ -569,10 +574,10 @@ const Post = ({ post, saved, toggleSaved }) => {
             />
         </div>
     );
-};
+});
 
 // Composant pour la page de fil d'actualité
-const FeedPage = ({ posts, saved, toggleSaved }) => {
+const FeedPage = ({ posts, saved, toggleSaved, loading, hasMore, onLoadMore }) => {
     const [users, setUsers] = useState([]);
 
     // Simuler des données d'utilisateurs
@@ -623,6 +628,17 @@ const FeedPage = ({ posts, saved, toggleSaved }) => {
     return (
         <div className="h-full overflow-y-auto">
             <NearbyPage users={users} />
+            
+            {/* Skeleton loader pendant le chargement initial */}
+            {loading ? (
+                <PostListSkeleton count={5} />
+            ) : posts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                    <p className="text-gray-600 mb-2">Aucune offre disponible pour le moment</p>
+                    <p className="text-sm text-gray-500">Revenez plus tard !</p>
+                </div>
+            ) : (
+                <>
             {posts.map(post => (
                 <Post
                     key={post.id}
@@ -631,6 +647,21 @@ const FeedPage = ({ posts, saved, toggleSaved }) => {
                     toggleSaved={toggleSaved}
                 />
             ))}
+                    
+                    {/* Bouton "Voir plus" */}
+                    {hasMore && (
+                        <div className="flex justify-center py-6 px-4">
+                            <button 
+                                onClick={onLoadMore}
+                                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2 shadow-md hover:shadow-lg transform hover:scale-105"
+                            >
+                                <ChevronRight className="w-5 h-5" />
+                                Voir plus d'offres
+                            </button>
+                        </div>
+                    )}
+                </>
+            )}
         </div>
     );
 };
@@ -720,6 +751,12 @@ const SideMenu = ({ isOpen, onClose }) => {
                             </a>
                         </li>
                         <li className="mb-4">
+                            <a href="/influencer/1" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
+                                <User className="w-5 h-5 mr-3 text-purple-500" />
+                                <span>Profil Influenceur</span>
+                            </a>
+                        </li>
+                        <li className="mb-4">
                             <a href="/Type de profil" className="flex items-center p-2 rounded-lg hover:bg-gray-100">
                                 <Settings className="w-5 h-5 mr-3 text-blue-500" />
                                 <span>Type de profil</span>
@@ -793,6 +830,8 @@ export default function IndexFeed() {
     const [saved, setSaved] = useState({});
     const [activeTab, setActiveTab] = useState('feed');
     const [menuOpen, setMenuOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearch = useDebounce(searchQuery, 300);
     const navigate = useNavigate();
 
     const toggleSaved = (postId) => {
@@ -850,26 +889,115 @@ export default function IndexFeed() {
 
     const { http } = AuthUser();
     const [services_list, setservices_list] = useState([]);
+    const [displayedPosts, setDisplayedPosts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [hasMore, setHasMore] = useState(false);
+    const [page, setPage] = useState(1);
+    const POSTS_PER_PAGE = 100;
+
     useEffect(() => {
-        http.get(`${urlApi}/service/all`).then(res => {
-            setservices_list(res.data);
-            console.log(res.data)
-        });
+        const loadPosts = async () => {
+            const cacheKey = 'services_all';
+            
+            // Vérifier le cache d'abord
+            const cachedData = cacheManager.get(cacheKey);
+            if (cachedData) {
+                console.log('[Cache] Posts récupérés du cache');
+                setservices_list(cachedData);
+                setDisplayedPosts(cachedData.slice(0, POSTS_PER_PAGE));
+                setHasMore(cachedData.length > POSTS_PER_PAGE);
+                setLoading(false);
+                return;
+            }
+
+            // Sinon, charger depuis l'API
+            setLoading(true);
+            try {
+                const res = await http.get(`${urlApi}/service/all`);
+                const allPosts = res.data || [];
+                
+                // Stocker en cache (5 minutes)
+                cacheManager.set(cacheKey, allPosts, 5 * 60 * 1000);
+                
+                setservices_list(allPosts);
+                setDisplayedPosts(allPosts.slice(0, POSTS_PER_PAGE));
+                setHasMore(allPosts.length > POSTS_PER_PAGE);
+                console.log(`[API] ${allPosts.length} posts chargés`);
+            } catch (err) {
+                console.error('Erreur chargement posts:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadPosts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Filtrer les posts en fonction de la recherche
+    const filteredPosts = useMemo(() => {
+        if (!debouncedSearch.trim()) return services_list;
+        
+        const query = debouncedSearch.toLowerCase();
+        return services_list.filter(post => {
+            const searchableText = [
+                post.titre,
+                post.details,
+                post.ville,
+                post.quartier,
+                post?.user?.nom,
+                post?.user?.prenom,
+                ...(post.services_metiers || []).map(m => m.libelle_serviceMetier)
+            ].filter(Boolean).join(' ').toLowerCase();
+            
+            return searchableText.includes(query);
+        });
+    }, [services_list, debouncedSearch]);
+
+    // Réinitialiser la pagination quand la recherche change
+    useEffect(() => {
+        setDisplayedPosts(filteredPosts.slice(0, POSTS_PER_PAGE));
+        setPage(1);
+        setHasMore(filteredPosts.length > POSTS_PER_PAGE);
+    }, [filteredPosts]);
+
+    const loadMorePosts = () => {
+        const nextPage = page + 1;
+        const startIndex = page * POSTS_PER_PAGE;
+        const endIndex = nextPage * POSTS_PER_PAGE;
+        const newPosts = filteredPosts.slice(startIndex, endIndex);
+        
+        setDisplayedPosts(prev => [...prev, ...newPosts]);
+        setPage(nextPage);
+        setHasMore(endIndex < filteredPosts.length);
+    };
 
 
     // Fonction pour afficher le contenu en fonction de l'onglet actif
     const renderContent = () => {
         switch (activeTab) {
             case 'feed':
-                return <FeedPage posts={services_list} saved={saved} toggleSaved={toggleSaved} />;
+                return <FeedPage 
+                    posts={displayedPosts} 
+                    saved={saved} 
+                    toggleSaved={toggleSaved}
+                    loading={loading}
+                    hasMore={hasMore}
+                    onLoadMore={loadMorePosts}
+                />;
             case 'requests':
                 return <RequestsPage />;
             case 'talents':
                 return <ServicesProviders />;
             default:
-                return <FeedPage posts={posts} saved={saved} toggleSaved={toggleSaved} />;
+                return <FeedPage 
+                    posts={displayedPosts} 
+                    saved={saved} 
+                    toggleSaved={toggleSaved}
+                    loading={loading}
+                    hasMore={hasMore}
+                    onLoadMore={loadMorePosts}
+                />;
         }
     };
 
@@ -886,18 +1014,33 @@ export default function IndexFeed() {
                     </div>
                 </div>
 
-                {/* Navigation */}
+                {/* Navigation avec recherche améliorée */}
                 <div className="px-3 py-2 flex items-center">
                     <div className="flex-1 flex items-center mr-3">
-                        <div className="bg-gray-100 p-2 rounded-full flex items-center w-full">
+                        <div className="bg-gray-100 p-2 rounded-full flex items-center w-full relative">
                             <Search className="w-4 h-4 text-gray-500 mr-2" />
                             <input
                                 type="text"
-                                placeholder="Rechercher"
+                                placeholder="Rechercher une offre, ville, métier..."
                                 className="bg-transparent outline-none text-xs flex-1"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
                             />
+                            {searchQuery && (
+                                <button 
+                                    onClick={() => setSearchQuery('')}
+                                    className="ml-1 p-1 hover:bg-gray-200 rounded-full transition-colors"
+                                >
+                                    <X className="w-3 h-3 text-gray-500" />
+                                </button>
+                            )}
                         </div>
                     </div>
+                    {debouncedSearch && (
+                        <div className="text-xs text-blue-600 font-medium whitespace-nowrap">
+                            {filteredPosts.length} résultat{filteredPosts.length > 1 ? 's' : ''}
+                        </div>
+                    )}
                 </div>
 
                 {/* Categories - Centered TabBar */}

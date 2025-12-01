@@ -1,0 +1,308 @@
+/**
+ * Optimisations responsive pour tablettes et écrans moyens
+ * Appliqué globalement à l'application
+ */
+
+/* Breakpoints */
+/* Mobile: < 640px */
+/* Tablet: 640px - 1024px */
+/* Desktop: > 1024px */
+
+/* =========================
+   TABLETTES (iPad, etc.)
+   ========================= */
+
+@media (min-width: 640px) and (max-width: 1024px) {
+    /* Conteneurs principaux */
+    .max-w-2xl {
+        max-width: 90%;
+    }
+
+    /* Cards et grilles */
+    .grid-cols-2 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    /* Menus et navigation */
+    .flex.gap-3 {
+        gap: 1rem;
+    }
+
+    /* Boutons */
+    button {
+        padding: 0.625rem 1.25rem;
+    }
+
+    /* Modals */
+    .modal-content {
+        max-width: 600px;
+        margin: 2rem auto;
+    }
+
+    /* Images */
+    img {
+        max-width: 100%;
+        height: auto;
+    }
+
+    /* Textes */
+    .text-xs {
+        font-size: 0.8rem;
+    }
+
+    .text-sm {
+        font-size: 0.9rem;
+    }
+
+    .text-base {
+        font-size: 1rem;
+    }
+
+    /* Feed posts */
+    .post-card {
+        padding: 1.25rem;
+    }
+
+    /* Timeline */
+    .timeline-item {
+        padding-left: 2rem;
+    }
+
+    /* Profile cards */
+    .profile-header {
+        height: 250px;
+    }
+
+    .profile-avatar {
+        width: 120px;
+        height: 120px;
+    }
+
+    /* Sidebar et colonnes */
+    .sidebar {
+        width: 280px;
+    }
+}
+
+/* =========================
+   TABLETTES PAYSAGE
+   ========================= */
+
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: landscape) {
+    /* En mode paysage, on peut afficher plus de contenu côte à côte */
+    .tablet-landscape-grid {
+        display: grid;
+        grid-template-columns: 350px 1fr;
+        gap: 1.5rem;
+    }
+
+    /* Header fixe optimisé */
+    .header-sticky {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+    }
+
+    /* Menus déroulants plus larges */
+    .dropdown-menu {
+        min-width: 280px;
+    }
+}
+
+/* =========================
+   OPTIMISATIONS TOUCH
+   ========================= */
+
+@media (hover: none) and (pointer: coarse) {
+    /* Augmenter la zone tactile */
+    button,
+    a,
+    .clickable {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Pas de hover sur tactile */
+    .hover\:bg-gray-100:hover {
+        background-color: inherit;
+    }
+
+    /* Meilleurs espacements pour le touch */
+    .touch-spacing {
+        padding: 0.75rem;
+    }
+}
+
+/* =========================
+   OPTIMISATIONS SCROLLBAR
+   ========================= */
+
+/* Scrollbar plus visible sur tablette */
+@media (min-width: 640px) {
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: #a8a8a8;
+    }
+}
+
+/* =========================
+   MODALS RESPONSIVE
+   ========================= */
+
+@media (min-width: 640px) and (max-width: 1024px) {
+    .modal-overlay {
+        padding: 2rem;
+    }
+
+    .modal-content {
+        max-height: 85vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 10;
+    }
+}
+
+/* =========================
+   CARTES DE PROFIL
+   ========================= */
+
+@media (min-width: 640px) {
+    .profile-card {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 1.5rem;
+        align-items: start;
+    }
+
+    .profile-info {
+        flex: 1;
+    }
+
+    .profile-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+}
+
+/* =========================
+   FEED ET POSTS
+   ========================= */
+
+@media (min-width: 768px) {
+    .feed-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .post-image {
+        max-height: 600px;
+        object-fit: contain;
+    }
+
+    .post-actions {
+        padding: 1rem 1.5rem;
+    }
+}
+
+/* =========================
+   NAVIGATION
+   ========================= */
+
+@media (min-width: 640px) {
+    .bottom-nav {
+        display: none; /* Masquer sur tablette si on a une nav latérale */
+    }
+
+    .side-nav {
+        display: block;
+        width: 250px;
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        background: white;
+        border-right: 1px solid #e5e7eb;
+        overflow-y: auto;
+    }
+
+    .main-content-with-sidenav {
+        margin-left: 250px;
+    }
+}
+
+/* =========================
+   FORMULAIRES
+   ========================= */
+
+@media (min-width: 640px) {
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+
+    .form-full-width {
+        grid-column: 1 / -1;
+    }
+
+    input,
+    textarea,
+    select {
+        font-size: 1rem; /* Empêcher le zoom sur iOS */
+    }
+}
+
+/* =========================
+   PERFORMANCE
+   ========================= */
+
+/* Réduire les animations sur tablettes pour améliorer les performances */
+@media (min-width: 640px) and (prefers-reduced-motion: no-preference) {
+    .smooth-scroll {
+        scroll-behavior: smooth;
+    }
+
+    .transition-optimized {
+        transition: transform 0.2s ease-in-out;
+        will-change: transform;
+    }
+}
+
+/* =========================
+   PRINT (Bonus)
+   ========================= */
+
+@media print {
+    .no-print,
+    button,
+    .navigation,
+    .sidebar {
+        display: none !important;
+    }
+
+    .print-full-width {
+        width: 100% !important;
+        max-width: none !important;
+    }
+}
+

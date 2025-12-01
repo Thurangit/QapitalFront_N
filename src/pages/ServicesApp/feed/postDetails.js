@@ -1,10 +1,40 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Share2, BookmarkIcon, ArrowLeft, Send, MessageCircle, MessageSquare, User, Star, ExternalLink, X, Linkedin, Facebook, Instagram, Mail, CheckCircle2 } from 'lucide-react';
+import { BookmarkIcon, Send, MessageCircle, MessageSquare, User, Star, ExternalLink, X, Linkedin, Facebook, Instagram, Mail, CheckCircle2, Activity, AlertTriangle } from 'lucide-react';
 import AuthUser from '../../../modules/AuthUser';
 import { urlApi, urlPublicAPi, urlServerImage } from '../../../modules/urlApp';
 import TopBar from '../../../modules/Components/topBar';
 import { toast } from '../../../modules/Components/Toast';
+import { OptimizedImage } from '../../../components/OptimizedImage';
+
+// Ajouter les animations CSS inline
+const animationStyles = `
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.3s ease-in-out;
+}
+
+.scale-102 {
+  transform: scale(1.02);
+}
+
+.scale-98 {
+  transform: scale(0.98);
+}
+`;
 
 const ShareModal = ({ isOpen, onClose, postId }) => {
     if (!isOpen) return null;
@@ -100,19 +130,12 @@ const ApplicantCard = ({ applicant, onContact, onViewProfile, onChoose, isChosen
     const u = applicant.user || {};
 
     // Construire l'URL de la photo du prestataire
-    let photoUrl = '/api/placeholder/64/64';
-    const photoSource = u.photo || u.avatar;
-    if (photoSource) {
-        if (photoSource.startsWith('http')) {
-            photoUrl = photoSource;
-        } else {
-            photoUrl = `${urlServerImage}/${photoSource}`;
-        }
-    }
-
-    console.log("👤 ApplicantCard - user:", u);
-    console.log("🖼️ ApplicantCard - photoSource:", photoSource);
-    console.log("🖼️ ApplicantCard - photoUrl:", photoUrl);
+    const photoUrl = useMemo(() => {
+        const photoSource = u.photo || u.avatar;
+        if (!photoSource) return '/api/placeholder/64/64';
+        if (photoSource.startsWith('http')) return photoSource;
+        return `${urlServerImage}/${photoSource}`;
+    }, [u.photo, u.avatar]);
 
     // Style de la carte selon si le prestataire est choisi
     const cardClassName = isChosen
@@ -121,11 +144,14 @@ const ApplicantCard = ({ applicant, onContact, onViewProfile, onChoose, isChosen
 
     return (
         <div className={cardClassName}>
-            {console.log("🖼️ Rendu ApplicantCard photo - photoUrl:", photoUrl)}
-            <img src={photoUrl} alt={u.nom || 'user'} className="w-12 h-12 rounded-full object-cover" onError={(e) => {
-                console.error("❌ Erreur de chargement photo candidat:", photoUrl);
-                e.target.src = '/api/placeholder/64/64';
-            }} />
+            <OptimizedImage
+                src={photoUrl}
+                alt={u.nom || 'user'}
+                className="w-12 h-12 rounded-full object-cover"
+                placeholder="/api/placeholder/64/64"
+                showLoader={false}
+                objectFit="cover"
+            />
             <div className="ml-3 flex-1">
                 <div className="flex justify-between items-start">
                     <div className="flex-1">
@@ -225,83 +251,441 @@ const getEtatMission = (stateId, etatMissionData = null) => {
     };
 };
 
+// Modal de confirmation pour annuler
+const CancelConfirmModal = ({ isOpen, onClose, onConfirm }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 animate-fadeIn">
+            <div className="bg-white rounded-lg w-80 max-w-full overflow-hidden shadow-xl transform transition-all animate-scaleIn">
+                <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                        <h3 className="text-lg font-medium">Avertissement</h3>
+                    </div>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-500">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                <div className="p-4">
+                    <p className="text-sm text-gray-700 mb-4">
+                        Êtes-vous sûr de vouloir annuler cette mission ? Cette action réinitialisera l'état de la mission à "Annulé" et vous ne pourrez plus modifier les étapes.
+                    </p>
+                    <div className="flex gap-2 justify-end">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
+                        >
+                            Non, garder
+                        </button>
+                        <button
+                            onClick={onConfirm}
+                            className="px-4 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm font-medium"
+                        >
+                            Oui, annuler
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Modal de confirmation pour confirmer une étape importante (sans boucle)
+const ConfirmStepModal = ({ isOpen, onClose, onConfirm, targetState, currentState }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 animate-fadeIn">
+            <div className="bg-white rounded-lg w-80 max-w-full overflow-hidden shadow-xl transform transition-all animate-scaleIn">
+                <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                    <h3 className="text-lg font-medium">Confirmer le changement d'état</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-500">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                <div className="p-4">
+                    <p className="text-sm text-gray-700 mb-4">
+                        Voulez-vous passer à l'état <strong>"{targetState}"</strong> ?
+                    </p>
+                    {targetState && currentState && (
+                        <p className="text-xs text-gray-500 mb-4">
+                            Toutes les étapes précédentes seront automatiquement validées.
+                        </p>
+                    )}
+                    <div className="flex gap-2 justify-end">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium"
+                        >
+                            Annuler
+                        </button>
+                        <button
+                            onClick={onConfirm}
+                            className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
+                        >
+                            Confirmer
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Composant Timeline verticale pour le suivi de mission
+const MissionTimeline = ({ etats, currentStateId, onStateClick, onCancel, updating, navigate, missionId }) => {
+    const currentState = currentStateId || 1;
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [targetStateId, setTargetStateId] = useState(null);
+
+    // Vérifier si la mission est annulée
+    const isCancelled = currentState === 7;
+
+    // Vérifier si la mission est dans un état final (ne peut plus être annulée)
+    const isFinalState = currentState === 4 || currentState === 5 || currentState === 6;
+
+    // États spéciaux
+    const SOLDE_STATE = 5; // Soldé - toujours accessible
+    const CANCELLED_STATE = 7; // Annulé
+
+    // Couleurs pour chaque état avec animations
+    const stateColors = {
+        1: { bg: 'bg-blue-500', ring: 'ring-blue-300', text: 'text-blue-700', light: 'bg-blue-50', border: 'border-blue-300', gradient: 'from-blue-400 to-blue-600' },
+        2: { bg: 'bg-cyan-500', ring: 'ring-cyan-300', text: 'text-cyan-700', light: 'bg-cyan-50', border: 'border-cyan-300', gradient: 'from-cyan-400 to-cyan-600' },
+        3: { bg: 'bg-yellow-500', ring: 'ring-yellow-300', text: 'text-yellow-700', light: 'bg-yellow-50', border: 'border-yellow-300', gradient: 'from-yellow-400 to-yellow-600' },
+        4: { bg: 'bg-green-500', ring: 'ring-green-300', text: 'text-green-700', light: 'bg-green-50', border: 'border-green-300', gradient: 'from-green-400 to-green-600' },
+        5: { bg: 'bg-purple-500', ring: 'ring-purple-300', text: 'text-purple-700', light: 'bg-purple-50', border: 'border-purple-300', gradient: 'from-purple-400 to-purple-600' },
+        6: { bg: 'bg-emerald-500', ring: 'ring-emerald-300', text: 'text-emerald-700', light: 'bg-emerald-50', border: 'border-emerald-300', gradient: 'from-emerald-400 to-emerald-600' },
+        7: { bg: 'bg-red-500', ring: 'ring-red-300', text: 'text-red-700', light: 'bg-red-50', border: 'border-red-300', gradient: 'from-red-400 to-red-600' },
+    };
+
+    // Fonction pour gérer le clic sur une étape
+    const handleStateClick = (targetId) => {
+        setTargetStateId(targetId);
+        setShowConfirmModal(true);
+    };
+
+    // Fonction pour confirmer le changement d'état
+    const confirmStateChange = () => {
+        setShowConfirmModal(false);
+        if (targetStateId && onStateClick) {
+            onStateClick(targetStateId);
+        }
+        setTargetStateId(null);
+    };
+
+    if (!etats || etats.length === 0) {
+        return <p className="text-sm text-gray-500 text-center py-4">Chargement des états...</p>;
+    }
+
+    // Filtrer les états pour séparer l'état "Annulé" (on ne l'affiche pas dans la timeline normale)
+    const normalEtats = etats.filter(e => e.id !== CANCELLED_STATE);
+
+    return (
+        <div className="py-4">
+            <div className="relative">
+                {/* Ligne de progression verticale */}
+                <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200 z-0">
+                    {!isCancelled && (
+                        <div
+                            className="w-full bg-gradient-to-b from-blue-500 via-cyan-500 to-green-500 transition-all duration-700 ease-in-out"
+                            style={{ height: `${((currentState - 1) / (normalEtats.length - 1)) * 100}%` }}
+                        />
+                    )}
+                </div>
+
+                {/* Points de la timeline verticale */}
+                <div className="relative space-y-6">
+                    {normalEtats.map((etat, index) => {
+                        const etatId = etat.id;
+                        const isCompleted = !isCancelled && etatId <= currentState;
+                        const isCurrent = !isCancelled && etatId === currentState;
+                        const isSolde = etatId === SOLDE_STATE;
+                        const isClickable = !isCancelled && !updating && (isSolde || etatId > currentState);
+                        const colors = stateColors[etatId] || stateColors[1];
+
+                        return (
+                            <div key={etatId} className="relative flex items-start gap-4 z-10">
+                                {/* Point de la timeline */}
+                                <div className="relative flex-shrink-0">
+                                    <div className={`
+                                        relative w-12 h-12 rounded-full flex items-center justify-center
+                                        transition-all duration-500 transform
+                                        ${isCompleted && !isCurrent
+                                            ? `${colors.bg} text-white shadow-lg scale-100`
+                                            : isCurrent
+                                                ? `bg-gradient-to-br ${colors.gradient} text-white shadow-xl ring-4 ${colors.ring} scale-110`
+                                                : isCancelled
+                                                    ? 'bg-gray-200 text-gray-400 opacity-40'
+                                                    : 'bg-gray-200 text-gray-500'
+                                        }
+                                    `}>
+                                        {/* Effet de pulsation subtile pour l'état actuel */}
+                                        {isCurrent && !isCancelled && !isFinalState && (
+                                            <div className={`absolute inset-0 rounded-full ${colors.bg} opacity-10 animate-pulse`} style={{ animationDuration: '2s' }} />
+                                        )}
+                                        <span className="relative z-10 text-sm font-bold">
+                                            {index + 1}
+                                        </span>
+                                        {/* Checkmark pour les états complétés */}
+                                        {isCompleted && !isCurrent && !isCancelled && (
+                                            <CheckCircle2 className="absolute -top-1 -right-1 w-5 h-5 text-white bg-green-500 rounded-full shadow-md animate-fadeIn" />
+                                        )}
+                                        {/* Croix rouge pour les états bloqués si annulé */}
+                                        {isCancelled && (
+                                            <X className="absolute -top-1 -right-1 w-5 h-5 text-white bg-red-500 rounded-full p-0.5 shadow-md" />
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Contenu de l'étape */}
+                                <div className={`
+                                    flex-1 rounded-lg p-4 transition-all duration-500
+                                    ${isCurrent && !isCancelled
+                                        ? `${colors.light} border-2 ${colors.border} shadow-lg transform scale-102`
+                                        : isCompleted && !isCurrent && !isCancelled
+                                            ? 'bg-green-50 border border-green-200 shadow-sm'
+                                            : isCancelled
+                                                ? 'bg-gray-50 border border-gray-200 opacity-40'
+                                                : 'bg-white border border-gray-200 hover:shadow-md'
+                                    }
+                                `}>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex-1">
+                                            <h4 className={`
+                                                text-sm font-semibold mb-1 transition-colors duration-300
+                                                ${isCurrent && !isCancelled ? colors.text : isCompleted && !isCurrent && !isCancelled ? 'text-green-700' : isCancelled ? 'text-gray-400 line-through' : 'text-gray-600'}
+                                            `}>
+                                                {etat.etat_mission}
+                                            </h4>
+                                            <p className="text-xs text-gray-500">
+                                                {isCancelled ? 'Étape désactivée' : `Étape ${index + 1} sur ${normalEtats.length}`}
+                                            </p>
+                                        </div>
+
+                                        {/* Bouton "Faire un paiement" toujours visible pour l'état Soldé (sauf si annulé) */}
+                                        {isSolde && !isCancelled && (
+                                            <button
+                                                onClick={() => {
+                                                    // Rediriger vers la page de paiement
+                                                    navigate(`/mission/${missionId}/paiement`);
+                                                }}
+                                                className={`
+                                                    px-4 py-2 rounded-md text-xs font-medium
+                                                    flex items-center gap-2
+                                                    transition-all duration-300 transform
+                                                    bg-gradient-to-r from-purple-500 to-purple-700 text-white hover:shadow-lg hover:scale-105 active:scale-95
+                                                `}
+                                            >
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                Faire un paiement
+                                            </button>
+                                        )}
+
+                                        {/* Bouton pour passer à l'étape suivante (sauf Soldé) */}
+                                        {!isSolde && isClickable && (
+                                            <button
+                                                onClick={() => handleStateClick(etatId)}
+                                                disabled={updating}
+                                                className={`
+                                                    px-4 py-2 rounded-md text-xs font-medium
+                                                    flex items-center gap-2
+                                                    transition-all duration-300 transform
+                                                    ${updating
+                                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                        : `bg-gradient-to-r ${colors.gradient} text-white hover:shadow-lg hover:scale-105 active:scale-95`
+                                                    }
+                                                `}
+                                            >
+                                                {updating ? (
+                                                    <>
+                                                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                                        </svg>
+                                                        Mise à jour...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle2 className="w-4 h-4" />
+                                                        Passer à {etat.etat_mission}
+                                                    </>
+                                                )}
+                                            </button>
+                                        )}
+
+                                        {/* Badge pour les étapes complétées */}
+                                        {isCompleted && !isCurrent && !isCancelled && (
+                                            <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium shadow-sm animate-fadeIn">
+                                                <CheckCircle2 className="w-3 h-3" />
+                                                Validé
+                                            </div>
+                                        )}
+
+                                        {/* Badge pour l'étape actuelle */}
+                                        {isCurrent && !isCancelled && (
+                                            <div className={`flex items-center gap-1 px-3 py-1 rounded-full ${colors.light} ${colors.text} text-xs font-medium shadow-sm animate-pulse`}>
+                                                <Activity className="w-3 h-3" />
+                                                En cours
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Indicateur de l'état actuel et bouton Annuler */}
+            <div className="mt-6 space-y-3">
+                <div className={`p-4 rounded-lg border transition-all duration-500 ${isCancelled
+                    ? 'bg-gradient-to-r from-red-50 to-red-100 border-red-200'
+                    : isFinalState
+                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
+                        : 'bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200'
+                    }`}>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs text-gray-500 mb-1">État actuel de la mission</p>
+                            <p className={`text-base font-semibold transition-colors duration-300 ${isCancelled ? 'text-red-700' : isFinalState ? 'text-green-700' : 'text-gray-900'
+                                }`}>
+                                {etats.find(e => e.id === currentState)?.etat_mission || 'Inconnu'}
+                            </p>
+                        </div>
+                        {updating && (
+                            <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                        )}
+                        {isCancelled && (
+                            <AlertTriangle className="w-5 h-5 text-red-600 animate-pulse" />
+                        )}
+                        {isFinalState && (
+                            <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        )}
+                    </div>
+                </div>
+
+                {/* Bouton Annuler - désactivé si mission terminée/achevée/soldée ou déjà annulée */}
+                {!isFinalState && !isCancelled && (
+                    <button
+                        onClick={() => setShowCancelModal(true)}
+                        disabled={updating}
+                        className="w-full px-4 py-2 rounded-md bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium flex items-center justify-center gap-2 transition-all duration-300 transform hover:scale-102 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <X className="w-4 h-4" />
+                        Annuler la mission
+                    </button>
+                )}
+
+                {/* Message si mission terminée */}
+                {isFinalState && (
+                    <div className="w-full px-4 py-2 rounded-md bg-green-50 border border-green-200 text-green-700 text-sm font-medium flex items-center justify-center gap-2 shadow-sm animate-fadeIn">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Mission {etats.find(e => e.id === currentState)?.etat_mission.toLowerCase() || 'terminée'}
+                    </div>
+                )}
+
+                {/* Message si mission annulée */}
+                {isCancelled && (
+                    <div className="w-full px-4 py-2 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm font-medium flex items-center justify-center gap-2 shadow-sm animate-fadeIn">
+                        <AlertTriangle className="w-4 h-4" />
+                        Mission annulée - Aucune action possible
+                    </div>
+                )}
+            </div>
+
+            {/* Modal de confirmation pour confirmer une étape */}
+            <ConfirmStepModal
+                isOpen={showConfirmModal}
+                onClose={() => {
+                    setShowConfirmModal(false);
+                    setTargetStateId(null);
+                }}
+                onConfirm={confirmStateChange}
+                targetState={etats.find(e => e.id === targetStateId)?.etat_mission || ''}
+                currentState={etats.find(e => e.id === currentState)?.etat_mission || ''}
+            />
+
+            {/* Modal de confirmation pour annuler */}
+            <CancelConfirmModal
+                isOpen={showCancelModal}
+                onClose={() => setShowCancelModal(false)}
+                onConfirm={() => {
+                    setShowCancelModal(false);
+                    if (onCancel) {
+                        onCancel(CANCELLED_STATE); // ID 7 = Annulé
+                    }
+                }}
+            />
+        </div>
+    );
+};
+
 export default function PostDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { http, user } = AuthUser();
 
     const [loading, setLoading] = useState(true);
+    const [loadingCandidates, setLoadingCandidates] = useState(false);
     const [post, setPost] = useState(null);
     const [saved, setSaved] = useState(false);
     const [shareOpen, setShareOpen] = useState(false);
+    const [followOpen, setFollowOpen] = useState(false);
     const [applicants, setApplicants] = useState([]);
     const [applyOpen, setApplyOpen] = useState(false);
     const [applyText, setApplyText] = useState('');
     const [service_info, setservice_info] = useState({});
     const [submitting, setSubmitting] = useState(false);
     const [updatingChoice, setUpdatingChoice] = useState(null);
+    const [etatsMission, setEtatsMission] = useState([]);
+    const [updatingState, setUpdatingState] = useState(false);
+    const [etatsMissionLoaded, setEtatsMissionLoaded] = useState(false);
 
-    const fetchAllservice_info = () => {
-        http.get(`${urlApi}/service/info/${id}`).then(res => {
-            console.log("📦 Données service_info reçues:", res.data);
-            console.log("🖼️ Image service_info:", res.data?.image);
-            console.log("👤 Avatar user service_info:", res.data?.user?.avatar);
-            console.log("🔗 urlServerImage:", urlServerImage);
-            console.log("🔗 urlPublicAPi:", urlPublicAPi);
-            setservice_info(res.data);
-        }).catch(err => {
-            console.error("Erreur lors du chargement des informations du service:", err);
+    // Fonction pour traiter les candidatures (hors du useCallback pour éviter les dépendances)
+    const processCandidates = (allCandidates, serviceId) => {
+        if (!Array.isArray(allCandidates)) return [];
+
+        const filteredCandidates = allCandidates.filter(candidate => {
+            const candidateServiceId = candidate.id_service || candidate.id_post || candidate.post_id || candidate.service_id;
+            return candidateServiceId === serviceId || candidateServiceId === parseInt(serviceId) || String(candidateServiceId) === String(serviceId);
         });
-    }
 
-    const fetchAllCandidates = async () => {
+        return filteredCandidates.map(a => {
+            const userInfo = a.prestataire || a.user || {};
+            return {
+                id: a.id,
+                message: a.commentaire_prestataire || a.message || a.commentaire || '',
+                choise: a.choise || a.choice || 0,
+                user: {
+                    id: a.id_prestataire || a.user_id || a.prestataire_id || userInfo.id,
+                    nom: userInfo.nom || 'Nom',
+                    prenom: userInfo.prenom || 'Prénom',
+                    qualification: userInfo.qualification || 'Non renseignée',
+                    note: Number(userInfo.note_user || a.note || 0),
+                    photo: userInfo.avatar || userInfo.photo || null,
+                    avatar: userInfo.avatar || userInfo.photo || null,
+                },
+            };
+        });
+    };
+
+    const fetchAllCandidates = useCallback(async () => {
         try {
-            const appsRes = await http.get(`${urlApi}/service/candidature/all/${id}`).catch(() => ({ data: [] }));
+            const appsRes = await http.get(`${urlApi}/service/candidature/all/${id}`);
             const allCandidates = Array.isArray(appsRes.data) ? appsRes.data : [];
-            console.log(allCandidates)
-            // Filtrer les candidatures pour cette publication spécifique
-            const filteredCandidates = allCandidates.filter(candidate => {
-                const candidateServiceId = candidate.id_service || candidate.id_post || candidate.post_id || candidate.service_id;
-                return candidateServiceId === id || candidateServiceId === parseInt(id) || String(candidateServiceId) === String(id);
-            });
-
-            if (filteredCandidates.length > 0) {
-                const apps = await Promise.all(filteredCandidates.map(async (a) => {
-                    // Prendre les informations renvoyées par l'API backend (clé "prestataire")
-                    const userInfo = a.prestataire || a.user || {};
-
-                    console.log("👤 Candidat brut (a):", a);
-                    console.log("👤 userInfo:", userInfo);
-                    console.log("🖼️ userInfo.avatar:", userInfo.avatar);
-                    console.log("🖼️ userInfo.photo:", userInfo.photo);
-
-                    return {
-                        id: a.id,
-                        message: a.commentaire_prestataire || a.message || a.commentaire || '',
-                        choise: a.choise || a.choice || 0, // Récupérer le champ choise
-                        user: {
-                            id: a.id_prestataire || a.user_id || a.prestataire_id || userInfo.id,
-                            nom: userInfo.nom || 'Nom',
-                            prenom: userInfo.prenom || 'Prénom',
-                            qualification: userInfo.qualification || 'Non renseignée',
-                            note: (typeof userInfo.note_user !== 'undefined' ? Number(userInfo.note_user) : (typeof a.note !== 'undefined' ? Number(a.note) : 0)) || 0,
-                            photo: userInfo.avatar || userInfo.photo || null, // Ne pas mettre de placeholder ici, on le gère dans le composant
-                            avatar: userInfo.avatar || userInfo.photo || null, // Ajouter aussi avatar pour compatibilité
-                        },
-                    };
-                }));
-
-                console.log("✅ Applicants mappés:", apps);
-                setApplicants(apps);
-            } else {
-                // Si aucune candidature réelle, utiliser les données mockées uniquement en développement
-                setApplicants([]);
-            }
+            const processed = processCandidates(allCandidates, id);
+            setApplicants(processed);
         } catch (error) {
             console.error("Erreur lors du chargement des candidatures:", error);
             setApplicants([]);
         }
-    }
+    }, [http, id]);
 
     const updateChoice = async (candidateId, currentChoice) => {
         // Déterminer la nouvelle valeur : si choise === 1, on passe à 0, sinon à 1
@@ -340,165 +724,291 @@ export default function PostDetails() {
         }
     };
 
+    // Charger les états de mission UNE SEULE FOIS au montage
     useEffect(() => {
-        fetchAllservice_info();
-        fetchAllCandidates();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [id]);
-    const getMockPost = (mockId) => {
-        console.log("🔄 getMockPost appelé avec service_info:", service_info);
+        if (etatsMissionLoaded) return; // Ne charger qu'une seule fois
 
-        // Construire l'URL de l'image
-        let imageUrl = null;
-        if (service_info.image) {
-            if (service_info.image.startsWith('http')) {
-                imageUrl = service_info.image;
-            } else {
-                imageUrl = `${urlPublicAPi}/${service_info.image}`;
+        const loadEtats = async () => {
+            try {
+                const res = await http.get(`${urlApi}/service/etat`);
+                if (Array.isArray(res.data)) {
+                    setEtatsMission(res.data);
+                    setEtatsMissionLoaded(true);
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement des états:', error);
             }
+        };
+
+        if (http) {
+            loadEtats();
         }
-        console.log("🖼️ Mock image URL:", imageUrl);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Charger une seule fois au montage
+
+    // Fonction pour mettre à jour l'état de la mission avec mise à jour automatique de l'interface
+    const updateMissionState = async (newStateId) => {
+        if (!service_info.id || updatingState) return;
+
+        // Vérifier que l'utilisateur est le propriétaire de la mission
+        if (service_info.user_id && user?.id && service_info.user_id !== user.id) {
+            toast.error("Vous n'êtes pas autorisé à modifier cette mission.", "Accès refusé");
+            return;
+        }
+
+        setUpdatingState(true);
+        try {
+            // Utiliser PUT pour mettre à jour le service
+            await http.put(`${urlApi}/service/update/${service_info.id}`, {
+                state_id: newStateId
+            });
+
+            // Mettre à jour l'état local IMMÉDIATEMENT pour que l'interface se rafraîchisse
+            setservice_info(prev => ({ ...prev, state_id: newStateId }));
+            setPost(prev => prev ? { ...prev, state_id: newStateId } : null);
+
+            const newEtat = etatsMission.find(e => e.id === newStateId);
+            toast.success(
+                `Mission mise à jour : ${newEtat?.etat_mission || 'État mis à jour'}`,
+                "État mis à jour"
+            );
+        } catch (error) {
+            console.error("Erreur lors de la mise à jour de l'état:", error);
+            let errorMessage = "Une erreur s'est produite lors de la mise à jour de l'état.";
+            if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            } else if (error.response?.status === 404) {
+                errorMessage = "La route de mise à jour n'existe pas. Veuillez contacter l'administrateur.";
+            }
+            toast.error(errorMessage, "Erreur");
+        } finally {
+            setUpdatingState(false);
+        }
+    };
+
+    // Fonction pour construire le post à partir des données du service (hors du useCallback)
+    const buildPostFromService = (serviceData, serviceId) => {
+        if (!serviceData || !serviceData.id) {
+            return null;
+        }
+
+        // Construire l'URL de l'image du post
+        let imageUrl = null;
+        if (serviceData.image) {
+            imageUrl = serviceData.image.startsWith('http') ? serviceData.image : `${urlPublicAPi}/${serviceData.image}`;
+        } else if (serviceData.photo) {
+            imageUrl = serviceData.photo.startsWith('http') ? serviceData.photo : `${urlPublicAPi}/${serviceData.photo}`;
+        }
 
         // Construire l'URL de la photo de profil
         let profilePicUrl = '/api/placeholder/40/40';
-        if (service_info?.user?.avatar) {
-            if (service_info.user.avatar.startsWith('http')) {
-                profilePicUrl = service_info.user.avatar;
-            } else {
-                profilePicUrl = `${urlServerImage}/${service_info.user.avatar}`;
-            }
+        if (serviceData.user?.avatar) {
+            profilePicUrl = serviceData.user.avatar.startsWith('http')
+                ? serviceData.user.avatar
+                : `${urlServerImage}/${serviceData.user.avatar}`;
+        } else if (serviceData.author?.photo) {
+            profilePicUrl = serviceData.author.photo.startsWith('http')
+                ? serviceData.author.photo
+                : `${urlServerImage}/${serviceData.author.photo}`;
         }
-        console.log("👤 Mock profilePic URL:", profilePicUrl);
 
+        // Mapping pour uniformiser les données
         return {
-            id: service_info.id,
-            titre: service_info.titre,
-            details: service_info.details,
+            id: serviceData.id || serviceId,
+            titre: serviceData.titre || serviceData.title || 'Titre du service',
+            details: serviceData.details || serviceData.description || '',
             image: imageUrl,
-            created_at: service_info?.created_at,
-            author: `${service_info?.user?.nom || ''} ${service_info?.user?.prenom || ''}`.trim() || 'Auteur',
+            created_at: serviceData.created_at || serviceData.date || new Date().toISOString(),
+            author: (serviceData.user && (serviceData.user.nom || serviceData.user.prenom)
+                ? `${serviceData.user.nom || ''} ${serviceData.user.prenom || ''}`.trim()
+                : null) || (serviceData.author && (serviceData.author.nom || serviceData.author.name))
+                || serviceData.user_name || 'Auteur',
             profilePic: profilePicUrl,
-            category: "/électricité",
-            // Champs supplémentaires issus de la création d'offre
-            ville: service_info?.ville,
-            quartier: service_info?.quartier,
-            precision: service_info?.description_position,
-            pays: service_info?.pays,
-            region: "Littoral",
-            montant: service_info.montant,
-            deviseMonnaie: service_info.devise,
-            typeDuree: service_info?.type_duree_postservice,
-            dureeMois: 2,
-            dureeUnite: service_info?.type_duree_postservice,
-            metierSelectionnes: ["Électricien", "Technicien courant faible", "Installateur panneaux solaires"],
-            nbPrestataires: service_info?.nombre_prestataire,
-            typeDemandeur: "personne",
-            lien: service_info.lienhttp,
-            coordonnees: { lat: 4.081, lng: 9.767 },
+            category: serviceData.category || serviceData.categorie || undefined,
+            ville: serviceData.ville,
+            quartier: serviceData.quartier,
+            precision: serviceData.precision || serviceData.description_position,
+            pays: serviceData.pays,
+            region: serviceData.region,
+            montant: serviceData.montant,
+            deviseMonnaie: serviceData.deviseMonnaie || serviceData.devise,
+            typeDuree: serviceData.typeDuree || serviceData.type_duree_postservice,
+            dureeMois: serviceData.dureeMois,
+            dureeUnite: serviceData.dureeUnite || serviceData.type_duree_postservice,
+            metierSelectionnes: serviceData.metierSelectionnes || [],
+            nbPrestataires: serviceData.nbPrestataires || serviceData.nombre_prestataire,
+            typeDemandeur: serviceData.typeDemandeur,
+            lien: serviceData.lien || serviceData.lienhttp,
+            modeMission: serviceData.modeMission || serviceData.mode_mission || serviceData.type_mission || undefined,
+            state_id: serviceData.state_id
         };
     };
 
-
+    // Utiliser une ref pour http pour éviter les re-renders
+    const httpRef = useRef(http);
     useEffect(() => {
+        httpRef.current = http;
+    }, [http]);
+
+    // Effet principal pour charger toutes les données une seule fois
+    useEffect(() => {
+        if (!id) {
+            setLoading(false);
+            return;
+        }
+
         let mounted = true;
-        const load = async () => {
-            try {
-                // Utiliser la même route que fetchAllservice_info pour éviter les appels redondants
-                const postRes = await http.get(`${urlApi}/service/info/${id}`).catch(() => ({ data: {} }));
-                if (!mounted) return;
-                const p = postRes.data || {};
+        let cancelled = false;
 
-                console.log("📦 Données post reçues (p):", p);
-                console.log("🖼️ p.image:", p.image);
-                console.log("👤 p.user:", p.user);
-                console.log("👤 p.user?.avatar:", p.user?.avatar);
-
-                // Construire l'URL de l'image du post
-                let imageUrl = null;
-                if (p.image) {
-                    if (p.image.startsWith('http')) {
-                        imageUrl = p.image;
-                    } else {
-                        imageUrl = `${urlPublicAPi}/${p.image}`;
-                    }
-                } else if (p.photo) {
-                    if (p.photo.startsWith('http')) {
-                        imageUrl = p.photo;
-                    } else {
-                        imageUrl = `${urlPublicAPi}/${p.photo}`;
-                    }
-                }
-                console.log("🖼️ Image URL finale:", imageUrl);
-
-                // Construire l'URL de la photo de profil
-                let profilePicUrl = '/api/placeholder/40/40';
-                if (p.user?.avatar) {
-                    if (p.user.avatar.startsWith('http')) {
-                        profilePicUrl = p.user.avatar;
-                    } else {
-                        profilePicUrl = `${urlServerImage}/${p.user.avatar}`;
-                    }
-                } else if (p.author?.photo) {
-                    if (p.author.photo.startsWith('http')) {
-                        profilePicUrl = p.author.photo;
-                    } else {
-                        profilePicUrl = `${urlServerImage}/${p.author.photo}`;
-                    }
-                }
-                console.log("👤 ProfilePic URL finale:", profilePicUrl);
-
-                // mapping fallback to match feed fields
-                const mapped = {
-                    id: p.id || id,
-                    titre: p.titre || p.title || 'Titre du service',
-                    details: p.details || p.description || '',
-                    image: imageUrl,
-                    created_at: p.created_at || p.date || new Date().toISOString(),
-                    author: (p.user && (p.user.nom || p.user.prenom) ? `${p.user.nom || ''} ${p.user.prenom || ''}`.trim() : null) || (p.author && (p.author.nom || p.author.name)) || p.user_name || 'Auteur',
-                    profilePic: profilePicUrl,
-                    category: p.category || p.categorie || undefined,
-                    ville: p.ville,
-                    quartier: p.quartier,
-                    precision: p.precision || p.description_position,
-                    pays: p.pays,
-                    region: p.region,
-                    montant: p.montant,
-                    deviseMonnaie: p.deviseMonnaie || p.devise,
-                    typeDuree: p.typeDuree,
-                    dureeMois: p.dureeMois,
-                    dureeUnite: p.dureeUnite,
-                    metierSelectionnes: p.metierSelectionnes || [],
-                    nbPrestataires: p.nbPrestataires || p.nombre_prestataire,
-                    typeDemandeur: p.typeDemandeur,
-                    lien: p.lien || p.lienhttp,
-                    modeMission: p.modeMission || p.mode_mission || p.type_mission || undefined,
-                    state_id: p.state_id,
-                };
-                console.log("📝 Post mappé:", mapped);
-
-                const hasRealPost = !!(p && (p.titre || p.title || p.description || p.details));
-                // Si les données réelles ne sont pas disponibles, utiliser service_info comme fallback
-                const finalPost = hasRealPost ? mapped : (service_info && service_info.id ? getMockPost(id) : mapped);
-                console.log("✅ Post final:", finalPost);
-                setPost(finalPost);
-
-                // Mettre à jour service_info avec les données du post si disponible
-                if (hasRealPost && p) {
-                    setservice_info(prev => ({
-                        ...prev,
-                        ...p,
-                        state_id: p.state_id || prev.state_id,
-                        etat_mission: p.etat_mission || p.etatMission || prev.etat_mission
-                    }));
-                }
-            } finally {
+        const loadData = async () => {
+            if (!httpRef.current) {
                 if (mounted) setLoading(false);
+                return;
+            }
+
+            setLoading(true);
+
+            // Démarrer le chronomètre pour le délai minimum
+            const startTime = Date.now();
+            const minLoadingTime = 300; // Minimum 300ms pour éviter le flash
+
+            // Fonction helper pour créer un timeout (seulement pour les candidatures)
+            const withTimeout = (promise, timeoutMs = 20000) => {
+                let timeoutId;
+                const timeoutPromise = new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => reject(new Error('Timeout')), timeoutMs);
+                });
+
+                return Promise.race([
+                    promise.then(result => {
+                        clearTimeout(timeoutId);
+                        return result;
+                    }),
+                    timeoutPromise
+                ]);
+            };
+
+            // Fonction pour garantir un délai minimum
+            const ensureMinTime = async (callback) => {
+                const elapsed = Date.now() - startTime;
+                const remaining = Math.max(0, minLoadingTime - elapsed);
+                await new Promise(resolve => setTimeout(resolve, remaining));
+                if (mounted && !cancelled) {
+                    callback();
+                }
+            };
+
+            try {
+                // Charger d'abord les données principales (service info) - SANS timeout car critiques
+                // On attend patiemment ces données car elles sont essentielles
+                const serviceRes = await httpRef.current.get(`${urlApi}/service/info/${id}`)
+                    .catch(err => {
+                        console.error('Erreur service/info:', err);
+                        // En cas d'erreur, on retourne null mais on continue
+                        return { data: null };
+                    });
+
+                // Charger les candidatures en parallèle avec timeout (moins critique)
+                const candidatesPromise = httpRef.current.get(`${urlApi}/service/candidature/all/${id}`)
+                    .catch(err => {
+                        console.error('Erreur candidature/all:', err);
+                        return { data: [] };
+                    });
+
+                if (cancelled || !mounted) return;
+
+                const serviceData = serviceRes?.data || {};
+
+                // Vérifier que nous avons au moins un ID de service
+                if (!serviceData.id && !serviceData.id_service) {
+                    console.warn('Aucune donnée de service trouvée pour l\'ID:', id);
+                    if (mounted) {
+                        setservice_info({});
+                        setPost(null);
+                        setApplicants([]);
+                        await ensureMinTime(() => setLoading(false));
+                    }
+                    return;
+                }
+
+                // Mettre à jour service_info immédiatement
+                setservice_info(serviceData);
+
+                // Construire et mettre à jour le post immédiatement
+                const postData = buildPostFromService(serviceData, id);
+                if (postData) {
+                    setPost(postData);
+                } else {
+                    console.warn('Impossible de construire le post à partir des données');
+                    setPost(null);
+                }
+
+                // Arrêter le loader dès que les données principales sont chargées (avec délai minimum)
+                await ensureMinTime(() => setLoading(false));
+
+                // Charger les candidatures en arrière-plan (sans bloquer l'affichage)
+                // On les charge avec un timeout plus long et on ne bloque pas si ça échoue
+                if (mounted && !cancelled) {
+                    setLoadingCandidates(true);
+                }
+
+                // Charger les candidatures avec un timeout plus long (20 secondes)
+                try {
+                    const appsRes = await withTimeout(candidatesPromise, 20000);
+                    if (cancelled || !mounted) return;
+
+                    const allCandidates = Array.isArray(appsRes?.data) ? appsRes.data : [];
+                    const processedCandidates = processCandidates(allCandidates, id);
+                    if (mounted && !cancelled) {
+                        setApplicants(processedCandidates);
+                        setLoadingCandidates(false);
+                    }
+                } catch (candidateError) {
+                    // Si timeout ou erreur, on essaie quand même de charger sans timeout
+                    console.warn('Timeout ou erreur lors du chargement des candidatures, tentative sans timeout:', candidateError.message);
+                    try {
+                        // Tentative sans timeout pour récupérer les données si elles arrivent
+                        const appsRes = await httpRef.current.get(`${urlApi}/service/candidature/all/${id}`)
+                            .catch(() => ({ data: [] }));
+
+                        if (cancelled || !mounted) return;
+
+                        const allCandidates = Array.isArray(appsRes?.data) ? appsRes.data : [];
+                        const processedCandidates = processCandidates(allCandidates, id);
+                        if (mounted && !cancelled) {
+                            setApplicants(processedCandidates);
+                            setLoadingCandidates(false);
+                        }
+                    } catch (finalError) {
+                        // Si ça échoue encore, on affiche juste une liste vide
+                        console.warn('Impossible de charger les candidatures:', finalError);
+                        if (mounted && !cancelled) {
+                            setApplicants([]);
+                            setLoadingCandidates(false);
+                        }
+                    }
+                }
+
+            } catch (error) {
+                // Cette erreur ne devrait plus se produire car on n'utilise plus de timeout pour les données principales
+                console.error('Erreur lors du chargement des données principales:', error);
+                if (mounted && !cancelled) {
+                    setPost(null);
+                    setApplicants([]);
+                    setservice_info({});
+                    setLoading(false);
+                }
             }
         };
-        load();
-        return () => { mounted = false; };
+
+        loadData();
+
+        return () => {
+            cancelled = true;
+            mounted = false;
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [http, id, service_info]);
+    }, [id]); // Ne dépendre que de id, pas de http
 
     const submitApplication = async () => {
         // Vérifier que l'utilisateur est connecté
@@ -585,17 +1095,11 @@ export default function PostDetails() {
 
     const [activeTab, setActiveTab] = useState('resume');
 
+    // Si en cours de chargement, afficher le loader
     if (loading) {
         return (
             <div className="flex flex-col h-screen bg-gray-50">
-                <header className="sticky top-0 z-10 bg-white border-b border-gray-200">
-                    <div className="px-3 py-2 flex items-center gap-2">
-                        <button onClick={() => navigate(-1)} className="p-2 rounded-full hover:bg-gray-100">
-                            <ArrowLeft className="w-5 h-5" />
-                        </button>
-                        <h1 className="text-lg font-bold text-gray-800">Chargement...</h1>
-                    </div>
-                </header>
+                <TopBar title="Chargement..." onBack={() => navigate(-1)} />
                 <div className="flex-1 flex items-center justify-center">
                     <div className="flex flex-col items-center text-gray-600">
                         <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -609,11 +1113,17 @@ export default function PostDetails() {
         );
     }
 
-    if (!post) {
+    // Si aucune donnée n'est trouvée après le chargement, afficher le message d'erreur
+    if (!loading && (!post || !post.id)) {
         return (
-            <div className="p-6">
-                <button onClick={() => navigate(-1)} className="px-3 py-2 rounded-md bg-gray-100">Retour</button>
-                <p className="mt-4 text-gray-600">Offre introuvable.</p>
+            <div className="flex flex-col h-screen bg-gray-50">
+                <TopBar title="Offre introuvable" onBack={() => navigate(-1)} />
+                <div className="flex-1 p-6 flex flex-col items-center justify-center">
+                    <p className="text-gray-600 mb-4">Cette offre n'existe pas ou a été supprimée.</p>
+                    <button onClick={() => navigate(-1)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        Retourner à la liste
+                    </button>
+                </div>
             </div>
         );
     }
@@ -622,6 +1132,9 @@ export default function PostDetails() {
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-50">
+            {/* Injecter les styles d'animation */}
+            <style>{animationStyles}</style>
+
             <TopBar
                 title={"Détails de l'offre"}
                 onBack={() => navigate(-1)}
@@ -638,11 +1151,13 @@ export default function PostDetails() {
                 <div className="max-w-2xl mx-auto w-full">
                     {/* En-tête auteur */}
                     <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center">
-                        {console.log("👤 Rendu profilePic - post.profilePic:", post.profilePic)}
-                        <img src={post.profilePic} alt={post.author} className="w-10 h-10 rounded-full object-cover mr-3" onError={(e) => {
-                            console.error("❌ Erreur de chargement profilePic:", post.profilePic);
-                            e.target.src = '/api/placeholder/40/40';
-                        }} />
+                        <OptimizedImage
+                            src={post.profilePic}
+                            alt={post.author}
+                            className="w-10 h-10 rounded-full object-cover mr-3"
+                            placeholder="/api/placeholder/40/40"
+                            showLoader={false}
+                        />
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-gray-900">{post.author}</h3>
                             <p className="text-xs text-gray-500">{formatDate(post.created_at)}</p>
@@ -672,16 +1187,17 @@ export default function PostDetails() {
                         )} */}
                     </div>
 
-                    {/* Image */}
+                    {/* Image optimisée */}
                     {post.image && (
                         <div className="bg-white mt-3">
                             <div className="relative">
-                                {console.log("🖼️ Rendu image post - post.image:", post.image)}
-                                <img src={post.image} alt={post.titre} className="w-full h-auto object-cover" onError={(e) => {
-                                    console.error("❌ Erreur de chargement image:", post.image);
-                                    e.target.style.display = 'none';
-                                }} />
-
+                                <OptimizedImage
+                                    src={post.image}
+                                    alt={post.titre}
+                                    className="w-full h-auto object-cover"
+                                    placeholder="/api/placeholder/800/600"
+                                    priority={true}
+                                />
                             </div>
                         </div>
                     )}
@@ -808,8 +1324,8 @@ export default function PostDetails() {
                         <button onClick={() => setSaved(s => !s)} className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm flex items-center gap-2">
                             <BookmarkIcon className={`w-4 h-4 ${saved ? 'text-blue-600 fill-blue-600' : 'text-gray-600'}`} /> Sauvegarder
                         </button>
-                        <button onClick={() => setShareOpen(true)} className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm flex items-center gap-2">
-                            <Share2 className="w-4 h-4 text-gray-600" /> Partager
+                        <button onClick={() => setFollowOpen(o => !o)} className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm flex items-center gap-2">
+                            <Activity className={`w-4 h-4 ${followOpen ? 'text-blue-600' : 'text-gray-600'}`} /> Suivre
                         </button>
                     </div>
 
@@ -852,14 +1368,48 @@ export default function PostDetails() {
                         </div>
                     )}
 
+                    {/* Panneau de suivi de mission */}
+                    {followOpen && (
+                        <div className="bg-white px-4 py-4 border-b border-gray-200">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-base font-semibold text-gray-900">Suivi d'avancement de la mission</h3>
+                                <button
+                                    onClick={() => setFollowOpen(false)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <MissionTimeline
+                                etats={etatsMission}
+                                currentStateId={service_info?.state_id || post?.state_id || 1}
+                                onStateClick={updateMissionState}
+                                onCancel={updateMissionState}
+                                updating={updatingState}
+                                navigate={navigate}
+                                missionId={id}
+                            />
+                        </div>
+                    )}
+
                     {/* Candidats */}
                     <div className="bg-white px-4 py-4 mt-3">
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-base font-semibold">Candidatures</h3>
-                            <span className="text-xs text-gray-500">{applicants.length} candidat(s)</span>
+                            {loadingCandidates ? (
+                                <div className="flex items-center gap-2">
+                                    <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                    </svg>
+                                    <span className="text-xs text-gray-500">Chargement...</span>
+                                </div>
+                            ) : (
+                                <span className="text-xs text-gray-500">{applicants.length} candidat(s)</span>
+                            )}
                         </div>
                         <div className="space-y-3">
-                            {applicants.length === 0 && (
+                            {!loadingCandidates && applicants.length === 0 && (
                                 <p className="text-sm text-gray-500">Aucune candidature pour le moment.</p>
                             )}
                             {applicants.map((a) => (
@@ -877,7 +1427,6 @@ export default function PostDetails() {
                     </div>
                 </div>
             </main>
-
             <ShareModal isOpen={shareOpen} onClose={() => setShareOpen(false)} postId={post.id} />
         </div>
     );

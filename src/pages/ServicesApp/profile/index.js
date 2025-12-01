@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Star,
     MapPin,
@@ -18,16 +18,19 @@ import {
     Camera,
     Languages,
     Linkedin,
-
     Facebook,
     Instagram,
     ExternalLink,
-
-
+    Loader2
 } from 'lucide-react';
 import { StaticsImages } from '../../../modules/images';
 import AuthUser from '../../../modules/AuthUser';
-import { urlPublicAPi } from '../../../modules/urlApp';
+import { urlPublicAPi, urlServerImage } from '../../../modules/urlApp';
+import { useProfile } from '../../../hooks/useProfile';
+import { toast } from '../../../modules/Components/Toast';
+import profileService from '../../../services/profileService';
+import { OptimizedImage } from '../../../components/OptimizedImage';
+import { ProfilePageSkeleton } from '../../../components/SkeletonLoader';
 
 // Sous-composant: onglets d'édition du profil pour réduire la hauteur du modal
 function ProfileEditTabs({ profileForm, setProfileForm, profileState }) {
@@ -282,37 +285,88 @@ const freelancerData = {
     ]
 };
 
+// Styles d'animation personnalisés
+const styles = `
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideIn {
+    animation: slideIn 0.3s ease-out;
+}
+
+.animate-scaleIn {
+    animation: scaleIn 0.2s ease-out;
+}
+`;
+
 export default function ProfileServiceApp() {
     const [activeTab, setActiveTab] = useState("portfolio");
-
     const [language, setLanguage] = useState("fr");
     const { user } = AuthUser();
+    
+    // Utiliser le hook personnalisé pour gérer le profil
+    const {
+        portfolios,
+        experiences,
+        educations,
+        loading: profileLoading,
+        createPortfolio,
+        updatePortfolio,
+        deletePortfolio,
+        createExperience,
+        updateExperience,
+        deleteExperience,
+        createEducation,
+        updateEducation,
+        deleteEducation,
+        updateProfilePhoto,
+        updateCoverPhoto
+    } = useProfile(user?.id);
+
     const [profileState, setProfileState] = useState({
         coverPhoto: freelancerData.coverPhoto,
-        profilePhoto: `${urlPublicAPi}/${user.avatar}`,
-        role: freelancerData.role,
-        function: freelancerData.function,
-        description: freelancerData.description,
+        profilePhoto: user?.avatar ? `${urlServerImage}/${user.avatar}` : `${urlPublicAPi}/${user?.avatar || ''}`,
+        role: user?.role_professionnel || freelancerData.role,
+        function: user?.fonction || freelancerData.function,
+        description: user?.description || freelancerData.description,
         cities: freelancerData.cities,
-        minimumPrice: freelancerData.minimumPrice,
-        portfolio: freelancerData.portfolio,
-        missions: freelancerData.missions,
-        experience: freelancerData.experience,
-        education: freelancerData.education,
+        minimumPrice: user?.solde_minimum || freelancerData.minimumPrice,
+        missions: freelancerData.missions || [],
     });
+
     const [contactsState, setContactsState] = useState({
-        email: user.email || freelancerData.contacts.email,
-        phones: [user.num_tel_one || '', user.num_tel_two || ''],
+        email: user?.email || freelancerData.contacts.email,
+        phones: [user?.num_tel_one || '', user?.num_tel_two || ''],
         website: freelancerData.contacts.website || '',
     });
+
     const [socialsState, setSocialsState] = useState({
-        linkedin: freelancerData.contacts.facebook ? '' : '',
+        linkedin: '',
         facebook: freelancerData.contacts.facebook || '',
         instagram: freelancerData.contacts.instagram || '',
-        x: freelancerData.contacts.twitter || freelancerData.contacts.twitter === undefined ? freelancerData.contacts.twitter : '',
+        x: freelancerData.contacts.twitter || '',
         tiktok: '',
-        whatsapp: freelancerData.contacts.whatsappNumber || '',
+        whatsapp: user?.whatsapp_tel_two || freelancerData.contacts.whatsappNumber || '',
     });
+
+    // État de chargement pour les uploads
+    const [uploading, setUploading] = useState(false);
     const [showContactsModal, setShowContactsModal] = useState(false);
     const [showSocialsModal, setShowSocialsModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
@@ -375,14 +429,22 @@ export default function ProfileServiceApp() {
         );
     };
 
+    // Afficher skeleton pendant le chargement initial
+    if (profileLoading) {
+        return <ProfilePageSkeleton />;
+    }
+
     return (
         <div className="bg-gray-50 min-h-screen pb-6">
-            {/* Photo de couverture */}
+            <style>{styles}</style>
+            {/* Photo de couverture optimisée */}
             <div className="relative h-48 bg-gradient-to-r from-blue-500 to-purple-600">
-                <img
+                <OptimizedImage
                     src={profileState.coverPhoto}
                     alt="Couverture"
                     className="w-full h-full object-cover opacity-60"
+                    placeholder="/api/placeholder/1200/400"
+                    priority={true}
                 />
                 <button className="absolute top-2 right-2 bg-white bg-opacity-70 p-2 rounded-full" onClick={() => {
                     setProfileForm({
@@ -416,10 +478,12 @@ export default function ProfileServiceApp() {
                 <div className="bg-white rounded-lg shadow-md p-4 mb-4">
                     <div className="flex items-start">
                         <div className="relative -mt-12">
-                            <img
+                            <OptimizedImage
                                 src={profileState.profilePhoto}
                                 alt={`${user.user} ${user.prenom}`}
                                 className="w-24 h-24 rounded-full border-4 border-white object-cover shadow-sm"
+                                placeholder="/api/placeholder/150/150"
+                                priority={true}
                             />
                             <button className="absolute bottom-0 right-0 bg-white p-1 rounded-full shadow-sm" onClick={() => {
                                 setProfileForm({
@@ -485,7 +549,7 @@ export default function ProfileServiceApp() {
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
-                        {profileState.cities.map((city, index) => (
+                        {(profileState.cities || []).map((city, index) => (
                             <div key={index} className="flex items-center bg-blue-50 text-blue-700 rounded-full px-3 py-1 text-xs">
                                 <MapPin size={12} className="mr-1" />
                                 {city}
@@ -627,7 +691,7 @@ export default function ProfileServiceApp() {
                             <div>
                                 <div className="flex justify-between items-center mb-3">
                                     <h3 className="text-sm font-semibold">Projets</h3>
-                                    <button className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white flex items-center gap-1" onClick={() => {
+                                    <button className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white flex items-center gap-1 hover:bg-blue-700 transition-colors" onClick={() => {
                                         setEditingPortfolio(null);
                                         setPortfolioForm({ title: '', client: '', date: '', description: '', tags: '', imageFile: null, imagePreview: '' });
                                         setShowPortfolioModal(true);
@@ -635,31 +699,58 @@ export default function ProfileServiceApp() {
                                         <Plus size={14} /> Ajouter
                                     </button>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {profileState.portfolio.map((item, idx) => (
-                                        <div key={item.id || idx} className="rounded-lg overflow-hidden shadow-sm group relative cursor-pointer" onClick={() => { setPortfolioDetailsItem(item); setShowPortfolioDetails(true); }}>
-                                            <img src={item.thumbnail} alt={item.title} className="w-full h-36 object-cover" />
-                                            <div className="p-2 bg-white">
-                                                <h3 className="text-sm font-medium truncate">{item.title}</h3>
-                                                <p className="text-xs text-gray-500 truncate">{item.client}</p>
-                                            </div>
-                                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition" onClick={(e) => e.stopPropagation()}>
-                                                <button className="p-1 rounded bg-white shadow" onClick={() => {
-                                                    setEditingPortfolio({ index: idx, item });
-                                                    setPortfolioForm({ title: item.title, client: item.client, date: item.date, description: item.description, tags: (item.tags || []).join(', '), imageFile: null, imagePreview: '' });
-                                                    setShowPortfolioModal(true);
-                                                }}><Edit2 size={14} /></button>
-                                                <button className="p-1 rounded bg-white shadow" onClick={() => {
-                                                    setConfirmState({
-                                                        open: true,
-                                                        message: 'Supprimer ce projet du portfolio ? Cette action est irréversible.',
-                                                        onConfirm: () => setProfileState(ps => ({ ...ps, portfolio: ps.portfolio.filter((_, i) => i !== idx) }))
-                                                    });
-                                                }}><Trash2 size={14} /></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                {profileLoading ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                                    </div>
+                                ) : portfolios.length === 0 ? (
+                                    <p className="text-sm text-gray-500 text-center py-8">Aucun projet dans le portfolio. Cliquez sur "Ajouter" pour commencer !</p>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {portfolios.map((item, idx) => {
+                                            const imageUrl = item.image_portfolio ? `${urlPublicAPi}/${item.image_portfolio}` : '/api/placeholder/200/200';
+                                            return (
+                                                <div key={item.id} className="rounded-lg overflow-hidden shadow-sm group relative cursor-pointer transform hover:scale-105 transition-transform duration-200" onClick={() => { setPortfolioDetailsItem(item); setShowPortfolioDetails(true); }}>
+                                                    <img src={imageUrl} alt={item.libelle_portfolio} className="w-full h-36 object-cover" onError={(e) => {
+                                                        e.target.src = '/api/placeholder/200/200';
+                                                    }} />
+                                                    <div className="p-2 bg-white">
+                                                        <h3 className="text-sm font-medium truncate">{item.libelle_portfolio}</h3>
+                                                        <p className="text-xs text-gray-500 truncate">{item.categorie_portfolio}</p>
+                                                    </div>
+                                                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                                        <button className="p-1 rounded bg-white shadow hover:bg-gray-100 transition-colors" onClick={() => {
+                                                            setEditingPortfolio({ index: idx, item });
+                                                            setPortfolioForm({ 
+                                                                title: item.libelle_portfolio, 
+                                                                client: item.categorie_portfolio, 
+                                                                date: item.date_realisation_portfolio, 
+                                                                description: item.description_portfolio, 
+                                                                tags: item.autres_informations_portfolio || '', 
+                                                                imageFile: null, 
+                                                                imagePreview: '' 
+                                                            });
+                                                            setShowPortfolioModal(true);
+                                                        }}><Edit2 size={14} /></button>
+                                                        <button className="p-1 rounded bg-white shadow hover:bg-red-50 transition-colors" onClick={() => {
+                                                            setConfirmState({
+                                                                open: true,
+                                                                message: 'Supprimer ce projet du portfolio ? Cette action est irréversible.',
+                                                                onConfirm: async () => {
+                                                                    try {
+                                                                        await deletePortfolio(item.id);
+                                                                    } catch (error) {
+                                                                        console.error('Erreur suppression:', error);
+                                                                    }
+                                                                }
+                                                            });
+                                                        }}><Trash2 size={14} className="text-red-600" /></button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -676,7 +767,7 @@ export default function ProfileServiceApp() {
                                     </button>
                                 </div>
                                 <div className="space-y-4">
-                                    {profileState.missions.map((mission, idx) => (
+                                    {(profileState.missions || []).map((mission, idx) => (
                                         <div key={mission.id || idx} className="flex items-start bg-gray-50 p-3 rounded-lg relative">
                                             <img src={mission.image} alt={mission.client} className="w-12 h-12 rounded-lg object-cover" />
                                             <div className="ml-3 flex-1">
@@ -719,7 +810,7 @@ export default function ProfileServiceApp() {
                             <div className="space-y-4">
                                 <div className="flex justify-between items-center">
                                     <h3 className="text-sm font-semibold">Expérience</h3>
-                                    <button className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white flex items-center gap-1" onClick={() => {
+                                    <button className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white flex items-center gap-1 hover:bg-blue-700 transition-colors" onClick={() => {
                                         setEditingExperience(null);
                                         setExperienceForm({ position: '', company: '', period: '', description: '' });
                                         setShowExperienceModal(true);
@@ -727,34 +818,52 @@ export default function ProfileServiceApp() {
                                         <Plus size={14} /> Ajouter
                                     </button>
                                 </div>
-                                {profileState.experience.map((exp, idx) => (
-                                    <div key={exp.id || idx} className="relative pl-6 border-l-2 border-gray-200 pb-4">
-                                        <div className="absolute -left-1.5 top-0">
-                                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                        </div>
-                                        <h3 className="font-medium">{exp.position}</h3>
-                                        <p className="text-sm text-gray-600">{exp.company}</p>
-                                        <p className="text-xs text-gray-500 flex items-center mt-1">
-                                            <Calendar size={12} className="mr-1" />
-                                            {exp.period}
-                                        </p>
-                                        <p className="text-sm mt-2 text-gray-700">{exp.description}</p>
-                                        <div className="absolute top-0 right-0 flex gap-1">
-                                            <button className="p-1 rounded bg-white shadow" onClick={() => { setEditingExperience({ index: idx, exp }); setExperienceForm({ position: exp.position, company: exp.company, period: exp.period, description: exp.description }); setShowExperienceModal(true); }}><Edit2 size={14} /></button>
-                                            <button className="p-1 rounded bg-white shadow" onClick={() => setConfirmState({
-                                                open: true,
-                                                message: "Supprimer cette expérience ? Cette action est irréversible.",
-                                                onConfirm: () => setProfileState(ps => ({ ...ps, experience: ps.experience.filter((_, i) => i !== idx) }))
-                                            })}><Trash2 size={14} /></button>
-                                        </div>
+                                {profileLoading ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
                                     </div>
-                                ))}
+                                ) : experiences.length === 0 ? (
+                                    <p className="text-sm text-gray-500 text-center py-8">Aucune expérience ajoutée. Cliquez sur "Ajouter" pour commencer !</p>
+                                ) : (
+                                    experiences.map((exp, idx) => (
+                                        <div key={exp.id} className="relative pl-6 border-l-2 border-gray-200 pb-4 transition-all hover:border-blue-400 animate-fadeIn">
+                                            <div className="absolute -left-1.5 top-0">
+                                                <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+                                            </div>
+                                            <h3 className="font-medium">{exp.position}</h3>
+                                            <p className="text-sm text-gray-600">{exp.company}</p>
+                                            <p className="text-xs text-gray-500 flex items-center mt-1">
+                                                <Calendar size={12} className="mr-1" />
+                                                {exp.period}
+                                            </p>
+                                            <p className="text-sm mt-2 text-gray-700">{exp.description}</p>
+                                            <div className="absolute top-0 right-0 flex gap-1">
+                                                <button className="p-1 rounded bg-white shadow hover:bg-gray-100 transition-colors" onClick={() => { 
+                                                    setEditingExperience({ index: idx, exp }); 
+                                                    setExperienceForm({ position: exp.position, company: exp.company, period: exp.period, description: exp.description }); 
+                                                    setShowExperienceModal(true); 
+                                                }}><Edit2 size={14} /></button>
+                                                <button className="p-1 rounded bg-white shadow hover:bg-red-50 transition-colors" onClick={() => setConfirmState({
+                                                    open: true,
+                                                    message: "Supprimer cette expérience ? Cette action est irréversible.",
+                                                    onConfirm: async () => {
+                                                        try {
+                                                            await deleteExperience(exp.id);
+                                                        } catch (error) {
+                                                            console.error('Erreur suppression:', error);
+                                                        }
+                                                    }
+                                                })}><Trash2 size={14} className="text-red-600" /></button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         )}
 
                         {activeTab === "experience" && (
                             <div className="space-y-4">
-                                {freelancerData.experience.map((exp) => (
+                                {(freelancerData.experience || []).map((exp) => (
                                     <div key={exp.id} className="relative pl-6 border-l-2 border-gray-200 pb-4">
                                         <div className="absolute -left-1.5 top-0">
                                             <div className="w-3 h-3 rounded-full bg-blue-500"></div>
@@ -779,31 +888,57 @@ export default function ProfileServiceApp() {
                             <div className="space-y-4">
                                 <div className="flex justify-between items-center">
                                     <h3 className="text-sm font-semibold">Formation</h3>
-                                    <button className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white flex items-center gap-1" onClick={() => { setEditingEducation(null); setEducationForm({ degree: '', school: '', period: '' }); setShowEducationModal(true); }}>
+                                    <button className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white flex items-center gap-1 hover:bg-blue-700 transition-colors" onClick={() => { 
+                                        setEditingEducation(null); 
+                                        setEducationForm({ degree: '', school: '', period: '' }); 
+                                        setShowEducationModal(true); 
+                                    }}>
                                         <Plus size={14} /> Ajouter
                                     </button>
                                 </div>
-                                {profileState.education.map((edu, idx) => (
-                                    <div key={edu.id || idx} className="relative pl-6 border-l-2 border-gray-200 pb-4">
-                                        <div className="absolute -left-1.5 top-0">
-                                            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                                        </div>
-                                        <h3 className="font-medium">{edu.degree}</h3>
-                                        <p className="text-sm text-gray-600">{edu.school}</p>
-                                        <p className="text-xs text-gray-500 flex items-center mt-1">
-                                            <Calendar size={12} className="mr-1" />
-                                            {edu.period}
-                                        </p>
-                                        <div className="absolute top-0 right-0 flex gap-1">
-                                            <button className="p-1 rounded bg-white shadow" onClick={() => { setEditingEducation({ index: idx, edu }); setEducationForm({ degree: edu.degree, school: edu.school, period: edu.period }); setShowEducationModal(true); }}><Edit2 size={14} /></button>
-                                            <button className="p-1 rounded bg-white shadow" onClick={() => setConfirmState({
-                                                open: true,
-                                                message: "Supprimer cette formation ? Cette action est irréversible.",
-                                                onConfirm: () => setProfileState(ps => ({ ...ps, education: ps.education.filter((_, i) => i !== idx) }))
-                                            })}><Trash2 size={14} /></button>
-                                        </div>
+                                {profileLoading ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
                                     </div>
-                                ))}
+                                ) : educations.length === 0 ? (
+                                    <p className="text-sm text-gray-500 text-center py-8">Aucune formation ajoutée. Cliquez sur "Ajouter" pour commencer !</p>
+                                ) : (
+                                    educations.map((edu, idx) => (
+                                        <div key={edu.id} className="relative pl-6 border-l-2 border-gray-200 pb-4 transition-all hover:border-purple-400 animate-fadeIn">
+                                            <div className="absolute -left-1.5 top-0">
+                                                <div className="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+                                            </div>
+                                            <h3 className="font-medium">{edu.libelle_formations}</h3>
+                                            <p className="text-sm text-gray-600">{edu.categorie_formations}</p>
+                                            <p className="text-xs text-gray-500 flex items-center mt-1">
+                                                <Calendar size={12} className="mr-1" />
+                                                {edu.date_realisation_formations}
+                                            </p>
+                                            <div className="absolute top-0 right-0 flex gap-1">
+                                                <button className="p-1 rounded bg-white shadow hover:bg-gray-100 transition-colors" onClick={() => { 
+                                                    setEditingEducation({ index: idx, edu }); 
+                                                    setEducationForm({ 
+                                                        degree: edu.libelle_formations, 
+                                                        school: edu.categorie_formations, 
+                                                        period: edu.date_realisation_formations 
+                                                    }); 
+                                                    setShowEducationModal(true); 
+                                                }}><Edit2 size={14} /></button>
+                                                <button className="p-1 rounded bg-white shadow hover:bg-red-50 transition-colors" onClick={() => setConfirmState({
+                                                    open: true,
+                                                    message: "Supprimer cette formation ? Cette action est irréversible.",
+                                                    onConfirm: async () => {
+                                                        try {
+                                                            await deleteEducation(edu.id);
+                                                        } catch (error) {
+                                                            console.error('Erreur suppression:', error);
+                                                        }
+                                                    }
+                                                })}><Trash2 size={14} className="text-red-600" /></button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         )}
                     </div>
@@ -840,8 +975,28 @@ export default function ProfileServiceApp() {
                             </div>
                         </div>
                         <div className="px-4 py-3 border-t flex justify-end gap-2">
-                            <button onClick={() => setShowContactsModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100">Annuler</button>
-                            <button onClick={() => setShowContactsModal(false)} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white">Enregistrer</button>
+                            <button onClick={() => setShowContactsModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100" disabled={uploading}>Annuler</button>
+                            <button onClick={async () => {
+                                setUploading(true);
+                                try {
+                                    await profileService.updateContacts({
+                                        userId: user.id,
+                                        email: contactsState.email,
+                                        tel: contactsState.phones[0],
+                                        whatsapp: contactsState.phones[1]
+                                    });
+                                    
+                                    toast.success('Contacts mis à jour avec succès !', 'Succès');
+                                    setShowContactsModal(false);
+                                } catch (error) {
+                                    console.error('Erreur:', error);
+                                } finally {
+                                    setUploading(false);
+                                }
+                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white flex items-center gap-2" disabled={uploading}>
+                                {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {uploading ? 'Enregistrement...' : 'Enregistrer'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -951,20 +1106,52 @@ export default function ProfileServiceApp() {
                             <ProfileEditTabs profileForm={profileForm} setProfileForm={setProfileForm} profileState={profileState} />
                         </div>
                         <div className="px-4 py-3 border-t flex justify-end gap-2">
-                            <button onClick={() => setShowProfileModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100">Annuler</button>
-                            <button onClick={() => {
-                                setProfileState(ps => ({
-                                    ...ps,
-                                    role: profileForm.role,
-                                    function: profileForm.function,
-                                    description: profileForm.description,
-                                    cities: profileForm.citiesText.split(',').map(s => s.trim()).filter(Boolean),
-                                    minimumPrice: profileForm.minimumPrice,
-                                    coverPhoto: profileForm.coverPreview || ps.coverPhoto,
-                                    profilePhoto: profileForm.profilePreview || ps.profilePhoto,
-                                }));
-                                setShowProfileModal(false);
-                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white">Enregistrer</button>
+                            <button onClick={() => setShowProfileModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100" disabled={uploading}>Annuler</button>
+                            <button onClick={async () => {
+                                setUploading(true);
+                                try {
+                                    // Upload photo de couverture si changée
+                                    if (profileForm.coverFile) {
+                                        await updateCoverPhoto(profileForm.coverFile);
+                                    }
+                                    
+                                    // Upload photo de profil si changée
+                                    if (profileForm.profileFile) {
+                                        await updateProfilePhoto(profileForm.profileFile);
+                                    }
+
+                                    // Mettre à jour les informations
+                                    await profileService.updateUserInfo({
+                                        userId: user.id,
+                                        ville: profileForm.citiesText,
+                                        pseudo: user.pseudo,
+                                        description: profileForm.description,
+                                        pays: user.pays_residence
+                                    });
+
+                                    // Mettre à jour l'état local
+                                    setProfileState(ps => ({
+                                        ...ps,
+                                        role: profileForm.role,
+                                        function: profileForm.function,
+                                        description: profileForm.description,
+                                        cities: profileForm.citiesText.split(',').map(s => s.trim()).filter(Boolean),
+                                        minimumPrice: profileForm.minimumPrice,
+                                        coverPhoto: profileForm.coverPreview || ps.coverPhoto,
+                                        profilePhoto: profileForm.profilePreview || ps.profilePhoto,
+                                    }));
+
+                                    toast.success('Profil mis à jour avec succès !', 'Succès');
+                                    setShowProfileModal(false);
+                                } catch (error) {
+                                    console.error('Erreur:', error);
+                                } finally {
+                                    setUploading(false);
+                                }
+                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white flex items-center gap-2" disabled={uploading}>
+                                {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {uploading ? 'Enregistrement...' : 'Enregistrer'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1061,24 +1248,40 @@ export default function ProfileServiceApp() {
                             </div>
                         </div>
                         <div className="px-4 py-3 border-t flex justify-end gap-2">
-                            <button onClick={() => setShowPortfolioModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100">Annuler</button>
-                            <button onClick={() => {
-                                const newItem = {
-                                    id: editingPortfolio?.item?.id || Date.now(),
-                                    title: portfolioForm.title,
-                                    client: portfolioForm.client,
-                                    date: portfolioForm.date,
-                                    description: portfolioForm.description,
-                                    tags: portfolioForm.tags.split(',').map(s => s.trim()).filter(Boolean),
-                                    thumbnail: portfolioForm.imagePreview || editingPortfolio?.item?.thumbnail || '/api/placeholder/200/200',
-                                };
-                                setProfileState(ps => {
-                                    const list = [...ps.portfolio];
-                                    if (editingPortfolio) list[editingPortfolio.index] = newItem; else list.push(newItem);
-                                    return { ...ps, portfolio: list };
-                                });
-                                setShowPortfolioModal(false);
-                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white">Enregistrer</button>
+                            <button onClick={() => setShowPortfolioModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100" disabled={uploading}>Annuler</button>
+                            <button onClick={async () => {
+                                if (!portfolioForm.title) {
+                                    toast.error('Le titre est requis', 'Champ manquant');
+                                    return;
+                                }
+
+                                setUploading(true);
+                                try {
+                                    const portfolioData = {
+                                        title: portfolioForm.title,
+                                        client: portfolioForm.client,
+                                        date: portfolioForm.date,
+                                        description: portfolioForm.description,
+                                        tags: portfolioForm.tags
+                                    };
+
+                                    if (editingPortfolio) {
+                                        await updatePortfolio(editingPortfolio.item.id, portfolioData, portfolioForm.imageFile);
+                                    } else {
+                                        await createPortfolio(portfolioData, portfolioForm.imageFile);
+                                    }
+                                    
+                                    setShowPortfolioModal(false);
+                                    setPortfolioForm({ title: '', client: '', date: '', description: '', tags: '', imageFile: null, imagePreview: '' });
+                                } catch (error) {
+                                    console.error('Erreur:', error);
+                                } finally {
+                                    setUploading(false);
+                                }
+                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white flex items-center gap-2" disabled={uploading}>
+                                {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {uploading ? 'Enregistrement...' : 'Enregistrer'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1186,16 +1389,32 @@ export default function ProfileServiceApp() {
                             </div>
                         </div>
                         <div className="px-4 py-3 border-t flex justify-end gap-2">
-                            <button onClick={() => setShowExperienceModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100">Annuler</button>
-                            <button onClick={() => {
-                                const newExp = { id: editingExperience?.exp?.id || Date.now(), ...experienceForm };
-                                setProfileState(ps => {
-                                    const list = [...ps.experience];
-                                    if (editingExperience) list[editingExperience.index] = newExp; else list.push(newExp);
-                                    return { ...ps, experience: list };
-                                });
-                                setShowExperienceModal(false);
-                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white">Enregistrer</button>
+                            <button onClick={() => setShowExperienceModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100" disabled={uploading}>Annuler</button>
+                            <button onClick={async () => {
+                                if (!experienceForm.position || !experienceForm.company) {
+                                    toast.error('Le poste et l\'entreprise sont requis', 'Champs manquants');
+                                    return;
+                                }
+
+                                setUploading(true);
+                                try {
+                                    if (editingExperience) {
+                                        await updateExperience(editingExperience.exp.id, experienceForm);
+                                    } else {
+                                        await createExperience(experienceForm);
+                                    }
+                                    
+                                    setShowExperienceModal(false);
+                                    setExperienceForm({ position: '', company: '', period: '', description: '' });
+                                } catch (error) {
+                                    console.error('Erreur:', error);
+                                } finally {
+                                    setUploading(false);
+                                }
+                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white flex items-center gap-2" disabled={uploading}>
+                                {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {uploading ? 'Enregistrement...' : 'Enregistrer'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1224,16 +1443,32 @@ export default function ProfileServiceApp() {
                             </div>
                         </div>
                         <div className="px-4 py-3 border-t flex justify-end gap-2">
-                            <button onClick={() => setShowEducationModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100">Annuler</button>
-                            <button onClick={() => {
-                                const newEdu = { id: editingEducation?.edu?.id || Date.now(), ...educationForm };
-                                setProfileState(ps => {
-                                    const list = [...ps.education];
-                                    if (editingEducation) list[editingEducation.index] = newEdu; else list.push(newEdu);
-                                    return { ...ps, education: list };
-                                });
-                                setShowEducationModal(false);
-                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white">Enregistrer</button>
+                            <button onClick={() => setShowEducationModal(false)} className="px-3 py-2 text-sm rounded-md bg-gray-100" disabled={uploading}>Annuler</button>
+                            <button onClick={async () => {
+                                if (!educationForm.degree || !educationForm.school) {
+                                    toast.error('Le diplôme et l\'école sont requis', 'Champs manquants');
+                                    return;
+                                }
+
+                                setUploading(true);
+                                try {
+                                    if (editingEducation) {
+                                        await updateEducation(editingEducation.edu.id, educationForm);
+                                    } else {
+                                        await createEducation(educationForm);
+                                    }
+                                    
+                                    setShowEducationModal(false);
+                                    setEducationForm({ degree: '', school: '', period: '' });
+                                } catch (error) {
+                                    console.error('Erreur:', error);
+                                } finally {
+                                    setUploading(false);
+                                }
+                            }} className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white flex items-center gap-2" disabled={uploading}>
+                                {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {uploading ? 'Enregistrement...' : 'Enregistrer'}
+                            </button>
                         </div>
                     </div>
                 </div>
